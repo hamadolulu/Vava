@@ -1,0 +1,1219 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VAVA BETA — Creativity Without Limits</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f4f7fc;
+  color: #172b4d;
+}
+
+header {
+  background: #1769e0;
+  color: white;
+  padding: 17px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 3px;
+}
+
+.tagline { font-size: 11px; margin-top: 4px; }
+
+.beta {
+  display: inline-block;
+  background: white;
+  color: #1769e0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: bold;
+  margin-top: 6px;
+}
+
+button, input, select, textarea { font: inherit; }
+
+button {
+  border: none;
+  border-radius: 9px;
+  padding: 11px 14px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.primary { background: #1769e0; color: white; }
+.light { background: #edf3ff; color: #1769e0; }
+.danger { background: #fff0f0; color: #c62828; }
+
+main {
+  max-width: 1500px;
+  margin: auto;
+  padding: 22px;
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr) 230px;
+  gap: 18px;
+}
+
+.panel {
+  background: white;
+  border: 1px solid #e5eaf3;
+  border-radius: 14px;
+  padding: 17px;
+  height: fit-content;
+  box-shadow: 0 4px 16px #17345c0a;
+  min-width: 0;
+}
+
+.panel h3 { font-size: 15px; margin: 0 0 14px; }
+
+.panel hr {
+  border: none;
+  border-top: 1px solid #edf0f5;
+  margin: 19px 0;
+}
+
+.panel button { width: 100%; }
+
+.panel label {
+  font-size: 13px;
+  font-weight: bold;
+  display: block;
+  margin: 10px 0 7px;
+}
+
+input[type="text"], input[type="email"], input[type="password"], select, textarea {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid #dce3ee;
+  border-radius: 8px;
+  background: white;
+  margin-bottom: 9px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 11px;
+  border: 1px solid #dce3ee;
+  border-radius: 8px;
+  background: white;
+  margin-bottom: 9px;
+  resize: vertical;
+}
+
+input[type="color"] {
+  width: 100%;
+  height: 42px;
+  border: 1px solid #e2e7ef;
+  border-radius: 8px;
+  background: white;
+  padding: 3px;
+}
+
+.workspace { min-width: 0; text-align: center; }
+.workspace h2 { font-size: 19px; text-align: left; margin: 3px 0 14px; }
+
+.canvas-wrap {
+  background: #e8edf5;
+  border: 1px solid #dce3ed;
+  border-radius: 14px;
+  padding: 16px;
+  overflow: auto;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+  background: white;
+  margin: auto;
+  box-shadow: 0 4px 18px #172b4d18;
+  touch-action: none;
+}
+
+#status {
+  color: #64748b;
+  font-size: 13px;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+
+.export { width: 100%; padding: 13px; }
+
+.small-note {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.gallery-item {
+  border: 1px solid #e5eaf3;
+  border-radius: 9px;
+  padding: 10px;
+  margin-bottom: 9px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.gallery-item button { margin-top: 8px; }
+
+#accountStatus {
+  font-size: 12px;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+@media(max-width: 850px) {
+  main { grid-template-columns: 1fr; padding: 13px; }
+  .workspace { order: 1; }
+  .panel { order: 2; }
+  header { padding: 15px; }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div>
+    <div class="logo">VAVA</div>
+    <div class="tagline">CREATIVITY WITHOUT LIMITS.</div>
+    <span class="beta">BETA</span>
+  </div>
+  <button class="light" onclick="newDesign()">＋ New Design</button>
+</header>
+
+<main>
+
+<section class="panel">
+
+  <h3>Elements</h3>
+  <button class="light edit-control" onclick="addText()">＋ Add Text</button>
+  <button class="light edit-control" onclick="addShape('rect')">＋ Rectangle</button>
+  <button class="light edit-control" onclick="addShape('circle')">＋ Circle</button>
+
+  <hr>
+
+  <h3>Background</h3>
+  <input class="edit-control" type="color" id="background" value="#ffffff"
+    onchange="backgroundColor=this.value;draw()">
+
+  <hr>
+
+  <h3>Online Account</h3>
+  <p id="accountStatus">Not signed in</p>
+
+  <input type="email" id="email" placeholder="Email address">
+  <input type="password" id="password" placeholder="Password">
+
+  <button class="primary" onclick="signUp()">Create Account</button>
+  <button class="light" onclick="signIn()">Sign In</button>
+  <button class="light" onclick="signOut()">Sign Out</button>
+
+  <p class="small-note">
+    An account is required to save and manage designs online.
+    Viewing public and unlisted designs does not require an account.
+  </p>
+
+  <hr>
+
+  <h3>My Online Designs</h3>
+
+  <label for="designTitle">Design Name</label>
+  <input type="text" id="designTitle" value="Untitled Design">
+
+  <label for="visibility">Visibility</label>
+  <select id="visibility">
+    <option value="private">Private</option>
+    <option value="unlisted">Unlisted</option>
+    <option value="public">Public</option>
+  </select>
+
+  <button class="primary" id="saveOnlineButton" onclick="saveOnlineDesign()">
+    Save Online
+  </button>
+
+  <button class="light" onclick="refreshOnlineDesigns()">
+    Refresh My Designs
+  </button>
+
+  <select id="onlineDesigns">
+    <option value="">Choose an online design</option>
+  </select>
+
+  <button class="light" onclick="openOnlineDesign()">Open Online Design</button>
+  <button class="light" onclick="shareDesign()">Copy Sharing Link</button>
+  <button class="danger" onclick="deleteOnlineDesign()">Delete Online Design</button>
+
+  <hr>
+
+  <h3>Saved on This Device</h3>
+  <button class="light" onclick="saveLocalDesign()">Save on Device</button>
+
+  <select id="savedDesigns">
+    <option value="">Choose a local design</option>
+  </select>
+
+  <button class="light" onclick="loadLocalDesign()">Open Local Design</button>
+  <button class="danger" onclick="deleteAllSavedDesigns()">Delete Local Designs</button>
+
+</section>
+
+<section class="workspace">
+
+  <h2>Design Editor</h2>
+
+  <div class="canvas-wrap">
+    <canvas id="canvas" width="900" height="600"></canvas>
+  </div>
+
+  <p id="status">Welcome to VAVA! Start creating something amazing.</p>
+
+  <button class="primary export" onclick="exportPNG()">Export as PNG</button>
+
+  <hr>
+
+  <h2>VAVA Public Gallery</h2>
+  <button class="primary" onclick="loadPublicGallery()">Explore Public Designs</button>
+  <div id="gallery">
+    <p class="small-note">Tap Explore Public Designs to see published work.</p>
+  </div>
+
+</section>
+
+<section class="panel">
+
+  <h3>Edit Element</h3>
+
+  <label for="textValue">Text</label>
+  <input class="edit-control" type="text" id="textValue"
+    placeholder="Select a text element"
+    oninput="updateText(this.value)">
+
+  <label for="objectColor">Element Color</label>
+  <input class="edit-control" type="color" id="objectColor" value="#1769e0"
+    onchange="updateColor(this.value)">
+
+  <hr>
+
+  <button class="light edit-control" onclick="duplicateObject()">Duplicate</button>
+  <button class="light edit-control" onclick="deleteObject()">Delete Element</button>
+  <button class="light edit-control" onclick="clearSelection()">Deselect</button>
+
+  <p class="small-note">
+    Shared designs open in view-only mode.
+  </p>
+
+  <hr>
+
+  <h3>Send Feedback</h3>
+  <p class="small-note">Found a bug or have an idea? Send a report to the VAVA team.</p>
+  <label for="feedbackType">Feedback type</label>
+  <select id="feedbackType">
+    <option value="Bug report">Report a bug</option>
+    <option value="Feature idea">Suggest an idea</option>
+    <option value="General feedback">General feedback</option>
+  </select>
+  <label for="feedbackMessage">Your message</label>
+  <textarea id="feedbackMessage" maxlength="2000" placeholder="Tell us what happened or what you would like to see..."></textarea>
+  <button class="primary" id="sendFeedbackButton" onclick="submitFeedback()">Send Feedback</button>
+  <p id="feedbackStatus" class="small-note" role="status" aria-live="polite">Reports are sent to the VAVA feedback inbox.</p>
+
+</section>
+
+</main>
+
+<script>
+/* ---------------------------------
+   SUPABASE CONNECTION
+---------------------------------- */
+
+const SUPABASE_URL = "PASTE_YOUR_PROJECT_URL";
+const SUPABASE_KEY = "PASTE_YOUR_PUBLISHABLE_KEY";
+
+let db = null;
+
+const backendReady =
+  SUPABASE_URL.startsWith("https://") &&
+  SUPABASE_KEY.length > 20 &&
+  !SUPABASE_URL.includes("PASTE_") &&
+  !SUPABASE_KEY.includes("PASTE_");
+
+if (backendReady && window.supabase) {
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+}
+
+/* ---------------------------------
+   EDITOR STATE
+---------------------------------- */
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let objects = [];
+let selected = -1;
+let backgroundColor = "#ffffff";
+let dragging = false;
+let offsetX = 0;
+let offsetY = 0;
+
+let currentUser = null;
+let currentOnlineId = null;
+let currentShareToken = null;
+let currentTitle = "Untitled Design";
+let readOnlyShared = false;
+
+function setStatus(message) {
+  document.getElementById("status").textContent = message;
+}
+
+function requireBackend() {
+  if (!db) {
+    throw new Error(
+      "Add your Supabase Project URL and Publishable key first."
+    );
+  }
+}
+
+function setReadOnly(value) {
+  readOnlyShared = value;
+
+  document.querySelectorAll(".edit-control").forEach(el => {
+    el.disabled = value;
+  });
+
+  document.getElementById("saveOnlineButton").disabled = value;
+  document.getElementById("designTitle").disabled = value;
+  document.getElementById("visibility").disabled = value;
+
+  canvas.style.pointerEvents = value ? "none" : "auto";
+}
+
+/* ---------------------------------
+   DRAWING
+---------------------------------- */
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = backgroundColor;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  objects.forEach((obj, i) => {
+    ctx.fillStyle = obj.color;
+
+    if (obj.type === "text") {
+      ctx.font = "bold " + obj.size + "px Arial";
+      ctx.textBaseline = "top";
+      ctx.fillText(obj.text, obj.x, obj.y);
+    }
+
+    if (obj.type === "rect") {
+      ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
+    }
+
+    if (obj.type === "circle") {
+      ctx.beginPath();
+      ctx.arc(obj.x, obj.y, obj.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (i === selected) {
+      ctx.save();
+      ctx.strokeStyle = "#1769e0";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([7, 5]);
+
+      if (obj.type === "circle") {
+        ctx.beginPath();
+        ctx.arc(obj.x, obj.y, obj.r + 7, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        const width = obj.type === "text"
+          ? ctx.measureText(obj.text).width : obj.w;
+
+        const height = obj.type === "text"
+          ? obj.size + 8 : obj.h;
+
+        ctx.strokeRect(obj.x - 5, obj.y - 5, width + 10, height + 10);
+      }
+
+      ctx.restore();
+    }
+  });
+}
+
+function addText() {
+  if (readOnlyShared) return;
+
+  objects.push({
+    type: "text",
+    text: "Your Text",
+    x: 100,
+    y: 100,
+    size: 48,
+    color: "#1769e0"
+  });
+
+  selectLast();
+}
+
+function addShape(type) {
+  if (readOnlyShared) return;
+
+  if (type === "rect") {
+    objects.push({
+      type: "rect",
+      x: 150,
+      y: 150,
+      w: 180,
+      h: 120,
+      color: "#1769e0"
+    });
+  } else {
+    objects.push({
+      type: "circle",
+      x: 300,
+      y: 250,
+      r: 65,
+      color: "#1769e0"
+    });
+  }
+
+  selectLast();
+}
+
+function selectLast() {
+  selected = objects.length - 1;
+  syncEditor();
+  draw();
+}
+
+function syncEditor() {
+  const obj = objects[selected];
+
+  document.getElementById("textValue").value =
+    obj && obj.type === "text" ? obj.text : "";
+
+  document.getElementById("objectColor").value =
+    obj ? obj.color : "#1769e0";
+}
+
+function updateText(value) {
+  if (readOnlyShared) return;
+
+  const obj = objects[selected];
+  if (!obj || obj.type !== "text") return;
+
+  obj.text = value;
+  draw();
+}
+
+function updateColor(value) {
+  if (readOnlyShared || selected < 0) return;
+
+  objects[selected].color = value;
+  draw();
+}
+
+function clearSelection() {
+  selected = -1;
+  syncEditor();
+  draw();
+}
+
+function deleteObject() {
+  if (readOnlyShared || selected < 0) return;
+
+  objects.splice(selected, 1);
+  selected = -1;
+  syncEditor();
+  draw();
+}
+
+function duplicateObject() {
+  if (readOnlyShared || selected < 0) return;
+
+  const copy = JSON.parse(JSON.stringify(objects[selected]));
+
+  copy.x += 25;
+  copy.y += 25;
+
+  objects.push(copy);
+  selectLast();
+}
+
+function newDesign() {
+  if (!confirm("Start a new design? Save your current work first.")) return;
+
+  objects = [];
+  selected = -1;
+  backgroundColor = "#ffffff";
+
+  currentOnlineId = null;
+  currentShareToken = null;
+  currentTitle = "Untitled Design";
+
+  document.getElementById("designTitle").value = currentTitle;
+  document.getElementById("background").value = "#ffffff";
+  document.getElementById("visibility").value = "private";
+
+  setReadOnly(false);
+  syncEditor();
+  draw();
+  setStatus("New design created!");
+}
+
+/* ---------------------------------
+   LOCAL SAVING
+---------------------------------- */
+
+function getLocalDesigns() {
+  return JSON.parse(localStorage.getItem("vava-designs") || "{}");
+}
+
+function saveLocalDesign() {
+  if (readOnlyShared) return;
+
+  const name = prompt("Name your local design:");
+  if (!name) return;
+
+  const designs = getLocalDesigns();
+
+  designs[name] = {
+    objects: JSON.parse(JSON.stringify(objects)),
+    backgroundColor
+  };
+
+  localStorage.setItem("vava-designs", JSON.stringify(designs));
+
+  refreshLocalDesigns();
+  setStatus("Design saved on this device!");
+}
+
+function refreshLocalDesigns() {
+  const designs = getLocalDesigns();
+  const select = document.getElementById("savedDesigns");
+
+  select.innerHTML = '<option value="">Choose a local design</option>';
+
+  Object.keys(designs).forEach(name => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  });
+}
+
+function loadLocalDesign() {
+  const name = document.getElementById("savedDesigns").value;
+  if (!name) return;
+
+  const designs = getLocalDesigns();
+
+  objects = designs[name].objects;
+  backgroundColor = designs[name].backgroundColor;
+
+  currentOnlineId = null;
+  currentShareToken = null;
+  currentTitle = name;
+
+  document.getElementById("designTitle").value = name;
+  document.getElementById("background").value = backgroundColor;
+
+  selected = -1;
+  setReadOnly(false);
+  syncEditor();
+  draw();
+
+  setStatus("Opened local design: " + name);
+}
+
+function deleteAllSavedDesigns() {
+  if (!confirm("Delete all locally saved designs?")) return;
+
+  localStorage.removeItem("vava-designs");
+  refreshLocalDesigns();
+
+  setStatus("All local designs deleted.");
+}
+
+/* ---------------------------------
+   ACCOUNT
+---------------------------------- */
+
+async function signUp() {
+  try {
+    requireBackend();
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (!email || password.length < 6) {
+      throw new Error("Enter an email and a password of at least 6 characters.");
+    }
+
+    const { data, error } = await db.auth.signUp({
+      email,
+      password
+    });
+
+    if (error) throw error;
+
+    if (data.session) {
+      currentUser = data.user;
+      updateAccountStatus();
+      setStatus("Your VAVA account was created!");
+      await refreshOnlineDesigns();
+    } else {
+      setStatus("Account created! Check your email to confirm your address, then sign in.");
+    }
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function signIn() {
+  try {
+    requireBackend();
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    const { data, error } = await db.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) throw error;
+
+    currentUser = data.user;
+    updateAccountStatus();
+
+    await refreshOnlineDesigns();
+    setStatus("Signed in successfully!");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function signOut() {
+  try {
+    requireBackend();
+
+    const { error } = await db.auth.signOut();
+    if (error) throw error;
+
+    currentUser = null;
+    currentOnlineId = null;
+    currentShareToken = null;
+
+    updateAccountStatus();
+    clearOnlineDesigns();
+    setStatus("You have signed out.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function updateAccountStatus() {
+  document.getElementById("accountStatus").textContent =
+    currentUser ? "Signed in: " + currentUser.email : "Not signed in";
+}
+
+function clearOnlineDesigns() {
+  document.getElementById("onlineDesigns").innerHTML =
+    '<option value="">Choose an online design</option>';
+}
+
+/* ---------------------------------
+   ONLINE SAVING
+---------------------------------- */
+
+async function saveOnlineDesign() {
+  try {
+    requireBackend();
+
+    if (!currentUser) {
+      throw new Error("Sign in before saving designs online.");
+    }
+
+    const title =
+      document.getElementById("designTitle").value.trim() ||
+      "Untitled Design";
+
+    const visibility = document.getElementById("visibility").value;
+
+    const designData = {
+      objects: JSON.parse(JSON.stringify(objects)),
+      backgroundColor
+    };
+
+    let result;
+
+    if (currentOnlineId) {
+      result = await db
+        .from("designs")
+        .update({
+          title,
+          visibility,
+          design_data: designData,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", currentOnlineId)
+        .select()
+        .single();
+    } else {
+      result = await db
+        .from("designs")
+        .insert({
+          owner_id: currentUser.id,
+          title,
+          visibility,
+          design_data: designData
+        })
+        .select()
+        .single();
+    }
+
+    if (result.error) throw result.error;
+
+    currentOnlineId = result.data.id;
+    currentShareToken = result.data.share_token;
+    currentTitle = result.data.title;
+
+    await refreshOnlineDesigns();
+
+    setStatus("Your design is saved online!");
+    return result.data;
+
+  } catch (error) {
+    setStatus(error.message);
+    throw error;
+  }
+}
+
+async function refreshOnlineDesigns() {
+  try {
+    requireBackend();
+
+    if (!currentUser) {
+      throw new Error("Sign in to view your online designs.");
+    }
+
+    const { data, error } = await db
+      .from("designs")
+      .select("id, title, visibility, share_token, updated_at")
+      .order("updated_at", { ascending: false });
+
+    if (error) throw error;
+
+    const select = document.getElementById("onlineDesigns");
+    select.innerHTML = '<option value="">Choose an online design</option>';
+
+    data.forEach(design => {
+      const option = document.createElement("option");
+      option.value = design.id;
+      option.textContent = design.title + " (" + design.visibility + ")";
+      select.appendChild(option);
+    });
+
+    setStatus("Your online designs have been refreshed.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function applyDesignData(data, title) {
+  if (!data || !Array.isArray(data.objects)) {
+    throw new Error("This design has invalid or unsupported data.");
+  }
+
+  objects = data.objects;
+  backgroundColor = data.backgroundColor || "#ffffff";
+  currentTitle = title || "Untitled Design";
+
+  document.getElementById("designTitle").value = currentTitle;
+  document.getElementById("background").value = backgroundColor;
+
+  selected = -1;
+  syncEditor();
+  draw();
+}
+
+async function openOnlineDesign() {
+  try {
+    requireBackend();
+
+    if (!currentUser) {
+      throw new Error("Sign in to open your online designs.");
+    }
+
+    const id = document.getElementById("onlineDesigns").value;
+    if (!id) throw new Error("Choose a design first.");
+
+    const { data, error } = await db
+      .from("designs")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) throw error;
+
+    currentOnlineId = data.id;
+    currentShareToken = data.share_token;
+
+    document.getElementById("visibility").value = data.visibility;
+
+    applyDesignData(data.design_data, data.title);
+    setReadOnly(false);
+
+    setStatus("Opened online design: " + data.title);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function deleteOnlineDesign() {
+  try {
+    requireBackend();
+
+    if (!currentUser) {
+      throw new Error("Sign in first.");
+    }
+
+    const id = document.getElementById("onlineDesigns").value;
+
+    if (!id) throw new Error("Choose an online design first.");
+
+    if (!confirm("Permanently delete this online design?")) return;
+
+    const { error } = await db
+      .from("designs")
+      .delete()
+      .eq("id", id);
+
+    if (error) throw error;
+
+    if (currentOnlineId === id) {
+      currentOnlineId = null;
+      currentShareToken = null;
+    }
+
+    await refreshOnlineDesigns();
+    setStatus("Online design deleted.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+/* ---------------------------------
+   SHARING
+---------------------------------- */
+
+async function shareDesign() {
+  try {
+    requireBackend();
+
+    if (!currentUser) {
+      throw new Error("Sign in before sharing your design.");
+    }
+
+    const saved = await saveOnlineDesign();
+
+    if (saved.visibility === "private") {
+      throw new Error("Change visibility to Unlisted or Public before sharing.");
+    }
+
+    const link = new URL(location.href);
+    link.search = "";
+    link.hash = "";
+    link.searchParams.set("share", saved.share_token);
+
+    await navigator.clipboard.writeText(link.href);
+
+    setStatus("Sharing link copied! " + link.href);
+  } catch (error) {
+    if (error.name === "NotAllowedError") {
+      setStatus("Clipboard unavailable. Try opening the site over HTTPS.");
+    } else {
+      setStatus(error.message);
+    }
+  }
+}
+
+async function openSharedDesign(token) {
+  try {
+    requireBackend();
+
+    const { data, error } = await db.rpc("get_shared_design", {
+      p_token: token
+    });
+
+    if (error) throw error;
+    if (!data) throw new Error("Design not found or sharing is disabled.");
+
+    currentOnlineId = null;
+    currentShareToken = token;
+
+    applyDesignData(data.design_data, data.title);
+
+    document.getElementById("visibility").value = data.visibility;
+
+    setReadOnly(true);
+    setStatus("Viewing a shared VAVA design. Editing is disabled.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+/* ---------------------------------
+   PUBLIC GALLERY
+---------------------------------- */
+
+async function loadPublicGallery() {
+  try {
+    requireBackend();
+
+    const { data, error } = await db
+      .from("designs")
+      .select("id, title, design_data, share_token, created_at")
+      .eq("visibility", "public")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const gallery = document.getElementById("gallery");
+    gallery.innerHTML = "";
+
+    if (!data.length) {
+      gallery.textContent = "No public designs yet. Be the first to publish one!";
+      return;
+    }
+
+    data.forEach(design => {
+      const item = document.createElement("div");
+      item.className = "gallery-item";
+
+      const title = document.createElement("strong");
+      title.textContent = design.title;
+
+      const button = document.createElement("button");
+      button.className = "light";
+      button.textContent = "View Design";
+
+      button.onclick = () => {
+        try {
+          currentOnlineId = null;
+          currentShareToken = design.share_token;
+
+          applyDesignData(design.design_data, design.title);
+          document.getElementById("visibility").value = "public";
+
+          setReadOnly(true);
+          setStatus("Viewing a public design. Editing is disabled.");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch (error) {
+          setStatus(error.message);
+        }
+      };
+
+      item.appendChild(title);
+      item.appendChild(document.createElement("br"));
+      item.appendChild(button);
+      gallery.appendChild(item);
+    });
+
+    setStatus("Public gallery loaded!");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+/* ---------------------------------
+   CANVAS MOVEMENT
+---------------------------------- */
+
+function pointerPosition(event) {
+  const rect = canvas.getBoundingClientRect();
+
+  return {
+    x: (event.clientX - rect.left) * canvas.width / rect.width,
+    y: (event.clientY - rect.top) * canvas.height / rect.height
+  };
+}
+
+function hitTest(obj, x, y) {
+  if (obj.type === "circle") {
+    return Math.hypot(x - obj.x, y - obj.y) <= obj.r + 8;
+  }
+
+  ctx.font = "bold " + (obj.size || 16) + "px Arial";
+
+  const width = obj.type === "text"
+    ? ctx.measureText(obj.text).width : obj.w;
+
+  const height = obj.type === "text"
+    ? obj.size + 8 : obj.h;
+
+  return x >= obj.x - 8 && x <= obj.x + width + 8 &&
+    y >= obj.y - 8 && y <= obj.y + height + 8;
+}
+
+canvas.addEventListener("pointerdown", event => {
+  if (readOnlyShared) return;
+
+  const p = pointerPosition(event);
+  selected = -1;
+
+  for (let i = objects.length - 1; i >= 0; i--) {
+    if (hitTest(objects[i], p.x, p.y)) {
+      selected = i;
+      dragging = true;
+      offsetX = p.x - objects[i].x;
+      offsetY = p.y - objects[i].y;
+
+      canvas.setPointerCapture(event.pointerId);
+      break;
+    }
+  }
+
+  syncEditor();
+  draw();
+});
+
+canvas.addEventListener("pointermove", event => {
+  if (!dragging || selected < 0 || readOnlyShared) return;
+
+  const p = pointerPosition(event);
+
+  objects[selected].x = p.x - offsetX;
+  objects[selected].y = p.y - offsetY;
+
+  draw();
+});
+
+canvas.addEventListener("pointerup", () => {
+  dragging = false;
+});
+
+canvas.addEventListener("pointercancel", () => {
+  dragging = false;
+});
+
+/* ---------------------------------
+   VAVA FEEDBACK
+---------------------------------- */
+
+async function submitFeedback() {
+  const typeField = document.getElementById("feedbackType");
+  const messageField = document.getElementById("feedbackMessage");
+  const button = document.getElementById("sendFeedbackButton");
+  const status = document.getElementById("feedbackStatus");
+  const message = messageField.value.trim();
+
+  if (!message) {
+    status.textContent = "Please write a message before sending.";
+    messageField.focus();
+    return;
+  }
+
+  if (message.length < 10) {
+    status.textContent = "Please add a little more detail (at least 10 characters).";
+    messageField.focus();
+    return;
+  }
+
+  if (!db) {
+    status.textContent = "Feedback is not connected yet. Add your Supabase project URL and publishable key, then create the vava_feedback table.";
+    return;
+  }
+
+  button.disabled = true;
+  status.textContent = "Sending feedback...";
+
+  try {
+    const { error } = await db.from("vava_feedback").insert({
+      category: typeField.value,
+      message: message
+    });
+
+    if (error) throw error;
+
+    messageField.value = "";
+    status.textContent = "Thanks! Your feedback was sent to the VAVA feedback inbox.";
+  } catch (error) {
+    console.error("VAVA feedback error:", error);
+    status.textContent = "Could not send feedback. Check the Supabase feedback table and try again.";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/* ---------------------------------
+   STARTUP
+---------------------------------- */
+
+async function initializeVAVA() {
+  refreshLocalDesigns();
+  draw();
+
+  if (!db) {
+    setStatus("Add your Supabase project URL and Publishable key to connect online features.");
+    return;
+  }
+
+  const { data, error } = await db.auth.getSession();
+
+  if (!error) {
+    currentUser = data.session?.user || null;
+    updateAccountStatus();
+  }
+
+  db.auth.onAuthStateChange((_event, session) => {
+    currentUser = session?.user || null;
+    updateAccountStatus();
+
+    if (!currentUser) {
+      clearOnlineDesigns();
+    }
+  });
+
+  const params = new URLSearchParams(location.search);
+  const shareToken = params.get("share");
+
+  if (shareToken) {
+    await openSharedDesign(shareToken);
+  } else if (currentUser) {
+    await refreshOnlineDesigns();
+  }
+}
+
+initializeVAVA();
+</script>
+
+</body>
+</html>
