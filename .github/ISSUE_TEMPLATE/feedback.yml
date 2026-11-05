@@ -1,0 +1,46 @@
+name: VAVA Feedback
+ description: Share a suggestion or report a problem with VAVA.
+ title: "[Feedback]: "
+ labels: [feedback]
+ body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve VAVA. Feedback is submitted as a public GitHub issue. Do not include passwords, Supabase keys, personal data, or other sensitive information.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feedback type
+      options:
+        - Bug report
+        - Feature request
+        - Usability or accessibility
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What would you like to tell us?
+      description: Explain what happened or what you would like to see.
+      placeholder: Describe your feedback...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce (for a bug)
+      description: What did you click or enter before the problem occurred?
+      placeholder: |
+        1. Open...
+        2. Click...
+        3. See the problem...
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Browser or device (optional)
+      placeholder: Browser, version, operating system, device
+    validations:
+      required: false

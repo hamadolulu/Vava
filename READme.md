@@ -2,6 +2,10 @@
 
 Creativity Without Limits — a browser-based design editor.
 
+## Send feedback
+
+VAVA feedback is collected through GitHub's Feedback issue form: [Open the VAVA feedback form](https://github.com/hamadolulu/Vava/issues/new?template=feedback.yml). Submissions become public GitHub issues, so do not include passwords, Supabase keys, personal data, or other sensitive information.
+
 ## Supabase setup
 
 The editor can run locally without Supabase, but online accounts, saving, the public gallery, and sharing need a database schema and Supabase Auth configuration.
@@ -17,4 +21,4 @@ The schema enables owner-only design management with Row Level Security. Public 
 
 ## App limitations
 
-The **Send Feedback** control does not send anything until a real feedback destination/service is connected. The browser app also cannot confirm that project settings, email delivery, domain redirects, or network access are configured correctly; test those in your own Supabase project and browser.
+The feedback form is hosted by GitHub and creates public issues. The editor's **Send Feedback** button in `index.html.html` still needs to be changed to open the form URL above before it will launch this service. The browser app also cannot confirm that project settings, email delivery, domain redirects, or network access are configured correctly; test those in your own Supabase project and browser.
