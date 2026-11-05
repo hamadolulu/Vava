@@ -361,20 +361,6 @@ let currentOnlineId = null;
 let currentShareToken = null;
 let currentTitle = "Untitled Design";
 let readOnlyShared = false;
-let storageAvailable = false;const MAX_TEXT_LENGTH = 2000;
-
-let objects = [];
-let selected = -1;
-let backgroundColor = "#ffffff";
-let dragging = false;
-let activePointerId = null;
-let offsetX = 0;
-let offsetY = 0;
-let currentUser = null;
-let currentOnlineId = null;
-let currentShareToken = null;
-let currentTitle = "Untitled Design";
-let readOnlyShared = false;
 let storageAvailable = false;
 
 function setStatus(message, isError = false) {
@@ -710,7 +696,8 @@ function exportPNG() {
           document.body.appendChild(link);
           link.click();
           link.remove();
-          setTimeout(() => URL.revokeObjectURL(url), 1500);          setStatus("PNG export started. Check your browser downloads.");
+          setTimeout(() => URL.revokeObjectURL(url), 1500);
+          setStatus("PNG export started. Check your browser downloads.");
         } catch (error) {
           showError(error, "PNG export failed.");
         }
@@ -998,7 +985,7 @@ canvas.addEventListener("pointerdown", event => {
       activePointerId = event.pointerId;
       offsetX = point.x - objects[i].x;
       offsetY = point.y - objects[i].y;
-      try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* pointer capture may be unavailable */ }
+      try { canvas.setPointerCapture(event.pointerId); } catch (_) { }
       break;
     }
   }
@@ -1007,7 +994,7 @@ canvas.addEventListener("pointerdown", event => {
 });
 
 canvas.addEventListener("pointermove", event => {
-  if (!dragging || selected < 0 || readOnlyShared || (activePointerId !== null && event.pointerId !== activePointerId)) return;
+  if (!dragging || selected < 0 || readOnlyShared || activePointerId !== event.pointerId) return;
   const point = pointerPosition(event);
   objects[selected].x = point.x - offsetX;
   objects[selected].y = point.y - offsetY;
@@ -1015,15 +1002,16 @@ canvas.addEventListener("pointermove", event => {
 });
 
 function finishDrag(event) {
-  if (activePointerId !== null && event?.pointerId !== undefined && event.pointerId !== activePointerId) return;
-  dragging = false;
-  activePointerId = null;
+  if (activePointerId !== null && event.pointerId === activePointerId) {
+    dragging = false;
+    activePointerId = null;
+  }
 }
+
 canvas.addEventListener("pointerup", finishDrag);
 canvas.addEventListener("pointercancel", finishDrag);
 canvas.addEventListener("lostpointercapture", finishDrag);
 
-/* ---------------- STARTUP ---------------- */
 async function initializeVAVA() {
   try {
     try {
@@ -1057,371 +1045,7 @@ async function initializeVAVA() {
     if (error) throw error;
     currentUser = data.session?.user || null;
     updateAccountStatus();
-    db.auth.onAuthStateChange((_event, session) => {
-      currentUser = session?.user || null;
-      updateAccountStatus();
-      if (!currentUser) clearOnlineDesigns();
-    });
-    if (currentUser) await refreshOnlineDesigns();
-    else setStatus("VAVA is ready. Sign in to save designs online.");
-  } catch (error) {
-    showError(error, "VAVA started, but some setup checks failed. You can still try the editor.");
-  }
-}
-
-initializeVAVA();
-
-</script>
-
-</body>
-</html>          setStatus("PNG export started. Check your browser downloads.");
-        } catch (error) {
-          showError(error, "PNG export failed.");
-        }
-      }, "image/png");
-    } else {
-      const link = document.createElement("a");
-      link.href = exportCanvas.toDataURL("image/png");
-      link.download = `${safeName}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setStatus("PNG export started. Check your browser downloads.");
-    }
-  } catch (error) {
-    showError(error, "PNG export failed.");
-  }
-}
-
-/* ---------------- SUPABASE AUTH ---------------- */
-async function signUp() {
-  try {
-    requireBackend();
-    const email = document.getElementById("email").value.trim();
-    const password = document.getElementById("password").value;
-    if (!email || password.length < 6) throw new Error("Enter a valid email and a password of at least 6 characters.");
-    const { data, error } = await db.auth.signUp({ email, password });
-    if (error) throw error;
-    if (data.session) {
-      currentUser = data.user;
-      updateAccountStatus();
-      await refreshOnlineDesigns();
-      setStatus("Your VAVA account was created!");
-    } else {
-      setStatus("Account created. Check your email to confirm your address, then sign in.");
-    }
-  } catch (error) { showError(error, "Account creation failed."); }
-}
-
-async function signIn() {
-  try {
-    requireBackend();
-    const email = document.getElementById("email").value.trim();
-    const password = document.getElementById("password").value;
-    if (!email || !password) throw new Error("Enter your email and password.");
-    const { data, error } = await db.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    currentUser = data.user;
-    updateAccountStatus();
-    await refreshOnlineDesigns();
-    setStatus("Signed in successfully!");
-  } catch (error) { showError(error, "Sign in failed."); }
-}
-
-async function signOut() {
-  try {
-    requireBackend();
-    const { error } = await db.auth.signOut();
-    if (error) throw error;
-    currentUser = null;
-    currentOnlineId = null;
-    currentShareToken = null;
-    updateAccountStatus();
-    clearOnlineDesigns();
-    setStatus("You have signed out.");
-  } catch (error) { showError(error, "Sign out failed."); }
-}
-
-function updateAccountStatus() {
-  document.getElementById("accountStatus").textContent = currentUser
-    ? `Signed in: ${currentUser.email || "VAVA user"}` : "Not signed in";
-}
-
-function clearOnlineDesigns() {
-  const select = document.getElementById("onlineDesigns");
-  if (select) select.replaceChildren(new Option("Choose an online design", ""));
-}
-
-/* ---------------- ONLINE DESIGNS ---------------- */
-async function saveOnlineDesign() {
-  try {
-    requireBackend();
-    if (readOnlyShared) throw new Error("This shared design is view-only. Create a new design to save your own copy.");
-    if (!currentUser) throw new Error("Sign in before saving designs online.");
-    const title = document.getElementById("designTitle").value.trim().slice(0, 120) || "Untitled Design";
-    const visibility = document.getElementById("visibility").value;
-    if (!["private", "unlisted", "public"].includes(visibility)) throw new Error("Choose a valid visibility setting.");
-    const designData = getCurrentDesignData();
-    let result;
-    if (currentOnlineId) {
-      result = await db.from("designs").update({ title, visibility, design_data: designData, updated_at: new Date().toISOString() })
-        .eq("id", currentOnlineId).select().single();
-    } else {
-      result = await db.from("designs").insert({ owner_id: currentUser.id, title, visibility, design_data: designData })
-        .select().single();
-    }
-    if (result.error) throw result.error;
-    currentOnlineId = result.data.id;
-    currentShareToken = result.data.share_token;
-    currentTitle = result.data.title;
-    await refreshOnlineDesigns();
-    setStatus("Your design is saved online!");
-    return result.data;
-  } catch (error) {
-    showError(error, "Couldn't save your design online.");
-    throw error;
-  }
-}
-
-async function refreshOnlineDesigns() {
-  try {
-    requireBackend();
-    if (!currentUser) throw new Error("Sign in to view your online designs.");
-    const { data, error } = await db.from("designs")
-      .select("id, title, visibility, share_token, updated_at")
-      .order("updated_at", { ascending: false });
-    if (error) throw error;
-    const select = document.getElementById("onlineDesigns");
-    select.replaceChildren(new Option("Choose an online design", ""));
-    (data || []).forEach(design => select.appendChild(new Option(`${design.title} (${design.visibility})`, design.id)));
-    setStatus("Your online designs have been refreshed.");
-  } catch (error) { showError(error, "Couldn't refresh online designs."); }
-}
-
-function applyDesignData(data, title) {
-  const validated = validateDesignData(data);
-  objects = validated.objects;
-  backgroundColor = validated.backgroundColor;
-  currentTitle = String(title || "Untitled Design").slice(0, 120);
-  document.getElementById("designTitle").value = currentTitle;
-  document.getElementById("background").value = backgroundColor;
-  selected = -1;
-  syncEditor();
-  draw();
-}
-
-async function openOnlineDesign() {
-  try {
-    requireBackend();
-    if (!currentUser) throw new Error("Sign in to open your online designs.");
-    const id = document.getElementById("onlineDesigns").value;
-    if (!id) throw new Error("Choose a design first.");
-    const { data, error } = await db.from("designs").select("*").eq("id", id).single();
-    if (error) throw error;
-    applyDesignData(data.design_data, data.title);
-    currentOnlineId = data.id;
-    currentShareToken = data.share_token;
-    document.getElementById("visibility").value = data.visibility;
-    setReadOnly(false);
-    setStatus(`Opened online design: ${data.title}`);
-  } catch (error) { showError(error, "Couldn't open that online design."); }
-}
-
-async function deleteOnlineDesign() {
-  try {
-    requireBackend();
-    if (!currentUser) throw new Error("Sign in first.");
-    const id = document.getElementById("onlineDesigns").value;
-    if (!id) throw new Error("Choose an online design first.");
-    if (!confirm("Permanently delete this online design?")) return;
-    const { error } = await db.from("designs").delete().eq("id", id);
-    if (error) throw error;
-    if (currentOnlineId === id) { currentOnlineId = null; currentShareToken = null; }
-    await refreshOnlineDesigns();
-    setStatus("Online design deleted.");
-  } catch (error) { showError(error, "Couldn't delete that online design."); }
-}
-
-/* ---------------- SHARING ---------------- */
-async function shareDesign() {
-  try {
-    requireBackend();
-    if (!currentUser) throw new Error("Sign in before sharing your design.");
-    const saved = await saveOnlineDesign();
-    if (saved.visibility === "private") throw new Error("Change visibility to Unlisted or Public before sharing.");
-    if (!saved.share_token) throw new Error("This design has no share token. Check the Supabase table setup.");
-    const link = new URL(location.href);
-    link.search = "";
-    link.hash = "";
-    link.searchParams.set("share", saved.share_token);
-    if (navigator.clipboard?.writeText && window.isSecureContext) {
-      await navigator.clipboard.writeText(link.href);
-      setStatus(`Sharing link copied: ${link.href}`);
-    } else {
-      window.prompt("Copy this sharing link:", link.href);
-      setStatus("Your sharing link is ready. Copy it from the dialog.");
-    }
-  } catch (error) { showError(error, "Couldn't create a sharing link."); }
-}
-
-async function openSharedDesign(token) {
-  try {
-    if (!db) throw new Error("This is a shared VAVA link, but online sharing isn't configured yet. Add the Supabase credentials and database setup, then reload.");
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
-      throw new Error("This sharing link is invalid or incomplete.");
-    }
-    const { data, error } = await db.rpc("get_shared_design", { p_token: token });
-    if (error) throw error;
-    if (!data) throw new Error("Design not found or sharing is disabled.");
-    applyDesignData(data.design_data, data.title);
-    currentOnlineId = null;
-    currentShareToken = token;
-    document.getElementById("visibility").value = data.visibility;
-    setReadOnly(true);
-    setStatus("Viewing a shared VAVA design. Editing is disabled.");
-  } catch (error) {
-    setReadOnly(false);
-    showError(error, "Couldn't open this shared design.");
-  }
-}
-
-/* ---------------- PUBLIC GALLERY ---------------- */
-async function loadPublicGallery() {
-  try {
-    requireBackend();
-    const { data, error } = await db.from("designs")
-      .select("id, title, design_data, share_token, created_at")
-      .eq("visibility", "public").order("created_at", { ascending: false }).limit(100);
-    if (error) throw error;
-    const gallery = document.getElementById("gallery");
-    gallery.replaceChildren();
-    if (!data?.length) {
-      gallery.textContent = "No public designs yet. Be the first to publish one!";
-      return;
-    }
-    data.forEach(design => {
-      const item = document.createElement("div");
-      item.className = "gallery-item";
-      const title = document.createElement("strong");
-      title.textContent = design.title || "Untitled Design";
-      const button = document.createElement("button");
-      button.className = "light";
-      button.textContent = "View Design";
-      button.addEventListener("click", () => {
-        try {
-          applyDesignData(design.design_data, design.title);
-          currentOnlineId = null;
-          currentShareToken = design.share_token || null;
-          document.getElementById("visibility").value = "public";
-          setReadOnly(true);
-          setStatus("Viewing a public design. Editing is disabled.");
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        } catch (error) { showError(error, "This public design contains invalid data."); }
-      });
-      item.append(title, document.createElement("br"), button);
-      gallery.appendChild(item);
-    });
-    setStatus("Public gallery loaded!");
-  } catch (error) { showError(error, "Couldn't load the public gallery."); }
-}
-
-/* ---------------- FEEDBACK ---------------- */
-function sendFeedback() {
-  setStatus("Feedback isn't connected yet. No report has been sent. To receive feedback, configure a real support email or connect a feedback service before launch.", true);
-}
-
-/* ---------------- CANVAS SELECTION + DRAG ---------------- */
-function pointerPosition(event) {
-  const rect = canvas.getBoundingClientRect();
-  if (!rect.width || !rect.height) return { x: 0, y: 0 };
-  return { x: (event.clientX - rect.left) * canvas.width / rect.width,
-    y: (event.clientY - rect.top) * canvas.height / rect.height };
-}
-
-function hitTest(obj, x, y) {
-  if (obj.type === "circle") return Math.hypot(x - obj.x, y - obj.y) <= obj.r + 8;
-  if (obj.type === "text") {
-    ctx.save();
-    ctx.font = `bold ${obj.size}px Arial`;
-    const width = ctx.measureText(obj.text).width;
-    ctx.restore();
-    return x >= obj.x - 8 && x <= obj.x + width + 8 && y >= obj.y - 8 && y <= obj.y + obj.size + 8;
-  }
-  return x >= obj.x - 8 && x <= obj.x + obj.w + 8 && y >= obj.y - 8 && y <= obj.y + obj.h + 8;
-}
-
-canvas.addEventListener("pointerdown", event => {
-  if (readOnlyShared || event.button !== 0) return;
-  const point = pointerPosition(event);
-  selected = -1;
-  dragging = false;
-  for (let i = objects.length - 1; i >= 0; i--) {
-    if (hitTest(objects[i], point.x, point.y)) {
-      selected = i;
-      dragging = true;
-      activePointerId = event.pointerId;
-      offsetX = point.x - objects[i].x;
-      offsetY = point.y - objects[i].y;
-      try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* pointer capture may be unavailable */ }
-      break;
-    }
-  }
-  syncEditor();
-  draw();
-});
-
-canvas.addEventListener("pointermove", event => {
-  if (!dragging || selected < 0 || readOnlyShared || (activePointerId !== null && event.pointerId !== activePointerId)) return;
-  const point = pointerPosition(event);
-  objects[selected].x = point.x - offsetX;
-  objects[selected].y = point.y - offsetY;
-  draw();
-});
-
-function finishDrag(event) {
-  if (activePointerId !== null && event?.pointerId !== undefined && event.pointerId !== activePointerId) return;
-  dragging = false;
-  activePointerId = null;
-}
-canvas.addEventListener("pointerup", finishDrag);
-canvas.addEventListener("pointercancel", finishDrag);
-canvas.addEventListener("lostpointercapture", finishDrag);
-
-/* ---------------- STARTUP ---------------- */
-async function initializeVAVA() {
-  try {
-    try {
-      const testKey = `${LOCAL_STORAGE_KEY}-test`;
-      localStorage.setItem(testKey, "1");
-      localStorage.removeItem(testKey);
-      storageAvailable = true;
-    } catch (_) {
-      storageAvailable = false;
-    }
-    refreshLocalDesigns();
-    syncEditor();
-    draw();
-    updateAccountStatus();
-
-    const params = new URLSearchParams(location.search);
-    const shareToken = params.get("share");
-    if (shareToken) {
-      await openSharedDesign(shareToken);
-      return;
-    }
-
-    if (!db) {
-      setStatus(storageAvailable
-        ? "VAVA is ready. Local editing and device saves are available. Configure Supabase to enable accounts, online saves, sharing, and the public gallery."
-        : "VAVA is ready for editing. This browser blocks local storage, and online features need Supabase setup.");
-      return;
-    }
-
-    const { data, error } = await db.auth.getSession();
-    if (error) throw error;
-    currentUser = data.session?.user || null;
-    updateAccountStatus();
-    db.auth.onAuthStateChange((_event, session) => {
+    db.auth.onAuthStateChange((event, session) => {
       currentUser = session?.user || null;
       updateAccountStatus();
       if (!currentUser) clearOnlineDesigns();
