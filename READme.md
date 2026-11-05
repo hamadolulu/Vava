@@ -2,23 +2,21 @@
 
 Creativity Without Limits — a browser-based design editor.
 
-## Send feedback
+## Contact and feedback
 
-VAVA feedback is collected through GitHub's Feedback issue form: [Open the VAVA feedback form](https://github.com/hamadolulu/Vava/issues/new?template=feedback.yml). Submissions become public GitHub issues, so do not include passwords, Supabase keys, personal data, or other sensitive information.
+The deployed entry page is [`index.html`](index.html). Its **Contact VAVA** button opens an in-app form that accepts comments without a VAVA account. Submissions are stored privately in the Supabase `feedback` table for the project owner to review in **Supabase Dashboard → Table Editor → feedback**. If a visitor supplies an email, it is included so the VAVA team can reply; it is optional.
 
-## Supabase setup
+To enable the contact form, open the Supabase project configured in the app, go to **SQL Editor**, and run [`supabase/feedback.sql`](supabase/feedback.sql) once. Do not add a service-role or secret key to the browser. The form uses the public publishable key with Row Level Security; clients can submit feedback but cannot read submissions.
 
-The editor can run locally without Supabase, but online accounts, saving, the public gallery, and sharing need a database schema and Supabase Auth configuration.
+The form has a basic honeypot, but public anonymous endpoints can receive spam. Add server-side CAPTCHA and rate limiting before promoting it widely. Submissions do not send email notifications; review them in the Supabase dashboard.
 
-1. Open the Supabase project associated with the URL configured in `index.html.html`.
-2. In **SQL Editor**, run [`supabase/schema.sql`](supabase/schema.sql).
-3. In **Authentication → URL Configuration**, set the Site URL and add the published VAVA site URL to the redirect URLs. For local testing, add the exact local development URL you use.
-4. In **Authentication → Providers**, enable Email and choose whether email confirmation should be required.
-5. Serve the page from a web server or GitHub Pages rather than opening it as a `file://` URL. Use HTTPS for clipboard support and reliable authentication redirects.
-6. Reload the page, create an account, and test with a private design first. Use Unlisted or Public only when you intend others to view the design.
+## Supabase editor setup
 
-The schema enables owner-only design management with Row Level Security. Public designs are readable in the gallery, while unlisted designs are only returned through the share-token function. Do not put a Supabase `service_role` or secret key in this HTML file.
+Online editor accounts, design saving, the public gallery, and sharing need the database schema and Supabase Auth configuration:
 
-## App limitations
+1. In Supabase **SQL Editor**, run [`supabase/schema.sql`](supabase/schema.sql).
+2. In **Authentication → URL Configuration**, set the Site URL and add your published site URL to redirect URLs.
+3. In **Authentication → Providers**, enable Email and choose the confirmation policy.
+4. Host the site over HTTPS rather than opening it through `file://`.
 
-The feedback form is hosted by GitHub and creates public issues. The editor's **Send Feedback** button in `index.html.html` still needs to be changed to open the form URL above before it will launch this service. The browser app also cannot confirm that project settings, email delivery, domain redirects, or network access are configured correctly; test those in your own Supabase project and browser.
+The SQL schema applies Row Level Security. Never include a Supabase `service_role` or secret key in browser code.
