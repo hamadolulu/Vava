@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -47,7 +46,7 @@ header {
   margin-top: 6px;
 }
 
-button, input, select, textarea { font: inherit; }
+button, input, select { font: inherit; }
 
 button {
   border: none;
@@ -103,24 +102,13 @@ main {
   margin: 10px 0 7px;
 }
 
-input[type="text"], input[type="email"], input[type="password"], select, textarea {
+input[type="text"], input[type="email"], input[type="password"], select {
   width: 100%;
   padding: 11px;
   border: 1px solid #dce3ee;
   border-radius: 8px;
   background: white;
   margin-bottom: 9px;
-}
-
-textarea {
-  width: 100%;
-  min-height: 110px;
-  padding: 11px;
-  border: 1px solid #dce3ee;
-  border-radius: 8px;
-  background: white;
-  margin-bottom: 9px;
-  resize: vertical;
 }
 
 input[type="color"] {
@@ -293,6 +281,7 @@ canvas {
   <p id="status">Welcome to VAVA! Start creating something amazing.</p>
 
   <button class="primary export" onclick="exportPNG()">Export as PNG</button>
+  <button class="light export" onclick="sendFeedback()">Send Feedback</button>
 
   <hr>
 
@@ -327,183 +316,190 @@ canvas {
     Shared designs open in view-only mode.
   </p>
 
-  <hr>
-
-  <h3>Send Feedback</h3>
-  <p class="small-note">Found a bug or have an idea? Send a report to the VAVA team.</p>
-  <label for="feedbackType">Feedback type</label>
-  <select id="feedbackType">
-    <option value="Bug report">Report a bug</option>
-    <option value="Feature idea">Suggest an idea</option>
-    <option value="General feedback">General feedback</option>
-  </select>
-  <label for="feedbackMessage">Your message</label>
-  <textarea id="feedbackMessage" maxlength="2000" placeholder="Tell us what happened or what you would like to see..."></textarea>
-  <button class="primary" id="sendFeedbackButton" onclick="submitFeedback()">Send Feedback</button>
-  <p id="feedbackStatus" class="small-note" role="status" aria-live="polite">Reports are sent to the VAVA feedback inbox.</p>
-
 </section>
 
 </main>
 
 <script>
-/* ---------------------------------
-   SUPABASE CONNECTION
----------------------------------- */
+/* =========================================================
+   VAVA BETA — EDITOR + STORAGE + SUPABASE
+   Configure SUPABASE_URL and SUPABASE_ANON_KEY below.
+   Never put a Supabase service_role/secret key in this file.
+========================================================= */
 
-const SUPABASE_URL = "PASTE_YOUR_PROJECT_URL";
-const SUPABASE_KEY = "PASTE_YOUR_PUBLISHABLE_KEY";
+const SUPABASE_URL = "PASTE_YOUR_SUPABASE_PROJECT_URL_HERE";
+const SUPABASE_ANON_KEY = "PASTE_YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY_HERE";
 
 let db = null;
+const backendReady = /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(SUPABASE_URL) &&
+  SUPABASE_ANON_KEY.length > 20 &&
+  !SUPABASE_ANON_KEY.includes("PASTE_");
 
-const backendReady =
-  SUPABASE_URL.startsWith("https://") &&
-  SUPABASE_KEY.length > 20 &&
-  !SUPABASE_URL.includes("PASTE_") &&
-  !SUPABASE_KEY.includes("PASTE_");
-
-if (backendReady && window.supabase) {
-  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+if (backendReady && window.supabase?.createClient) {
+  try {
+    db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } catch (error) {
+    console.error("VAVA Supabase initialization failed:", error);
+  }
 }
 
-/* ---------------------------------
-   EDITOR STATE
----------------------------------- */
-
 const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+const ctx = canvas?.getContext("2d");
+const LOCAL_STORAGE_KEY = "vava-designs";
+const MAX_OBJECTS = 500;
+const MAX_TEXT_LENGTH = 2000;
 
 let objects = [];
 let selected = -1;
 let backgroundColor = "#ffffff";
 let dragging = false;
+let activePointerId = null;
 let offsetX = 0;
 let offsetY = 0;
-
 let currentUser = null;
 let currentOnlineId = null;
 let currentShareToken = null;
 let currentTitle = "Untitled Design";
 let readOnlyShared = false;
+let storageAvailable = false;const MAX_TEXT_LENGTH = 2000;
 
-function setStatus(message) {
-  document.getElementById("status").textContent = message;
+let objects = [];
+let selected = -1;
+let backgroundColor = "#ffffff";
+let dragging = false;
+let activePointerId = null;
+let offsetX = 0;
+let offsetY = 0;
+let currentUser = null;
+let currentOnlineId = null;
+let currentShareToken = null;
+let currentTitle = "Untitled Design";
+let readOnlyShared = false;
+let storageAvailable = false;
+
+function setStatus(message, isError = false) {
+  const status = document.getElementById("status");
+  if (!status) return;
+  status.textContent = String(message || "");
+  status.style.color = isError ? "#b42318" : "#64748b";
+}
+
+function showError(error, fallback = "Something went wrong.") {
+  const message = error && typeof error.message === "string" ? error.message : fallback;
+  setStatus(message || fallback, true);
+  console.error("VAVA:", error);
 }
 
 function requireBackend() {
   if (!db) {
-    throw new Error(
-      "Add your Supabase Project URL and Publishable key first."
-    );
+    throw new Error("Online features aren't configured yet. Add your Supabase project URL and publishable key in the setup section of this file.");
   }
+  return db;
+}
+
+function isHexColor(value) {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function validateDesignData(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("This design is not valid: expected a design object.");
+  }
+  if (!Array.isArray(data.objects) || data.objects.length > MAX_OBJECTS) {
+    throw new Error("This design is not valid: its object list is missing or too large.");
+  }
+  const bg = data.backgroundColor ?? "#ffffff";
+  if (!isHexColor(bg)) throw new Error("This design has an invalid background color.");
+
+  const cleanObjects = data.objects.map((obj, index) => {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+      throw new Error(`Design object ${index + 1} is invalid.`);
+    }
+    if (!isHexColor(obj.color)) throw new Error(`Design object ${index + 1} has an invalid color.`);
+    const finite = value => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 100000;
+    if (!finite(obj.x) || !finite(obj.y)) throw new Error(`Design object ${index + 1} has invalid coordinates.`);
+
+    if (obj.type === "text") {
+      if (typeof obj.text !== "string" || obj.text.length > MAX_TEXT_LENGTH ||
+          !finite(obj.size) || obj.size < 1 || obj.size > 300) {
+        throw new Error(`Text object ${index + 1} contains invalid text or size.`);
+      }
+      return { type: "text", text: obj.text, x: obj.x, y: obj.y, size: obj.size, color: obj.color };
+    }
+    if (obj.type === "rect") {
+      if (!finite(obj.w) || !finite(obj.h) || obj.w <= 0 || obj.h <= 0 || obj.w > 10000 || obj.h > 10000) {
+        throw new Error(`Rectangle ${index + 1} has invalid dimensions.`);
+      }
+      return { type: "rect", x: obj.x, y: obj.y, w: obj.w, h: obj.h, color: obj.color };
+    }
+    if (obj.type === "circle") {
+      if (!finite(obj.r) || obj.r <= 0 || obj.r > 5000) throw new Error(`Circle ${index + 1} has an invalid radius.`);
+      return { type: "circle", x: obj.x, y: obj.y, r: obj.r, color: obj.color };
+    }
+    throw new Error(`Design object ${index + 1} uses an unsupported type.`);
+  });
+  return { objects: cleanObjects, backgroundColor: bg };
+}
+
+function getCurrentDesignData() {
+  return validateDesignData({ objects, backgroundColor });
 }
 
 function setReadOnly(value) {
-  readOnlyShared = value;
-
-  document.querySelectorAll(".edit-control").forEach(el => {
-    el.disabled = value;
+  readOnlyShared = Boolean(value);
+  document.querySelectorAll(".edit-control").forEach(el => { el.disabled = readOnlyShared; });
+  ["saveOnlineButton", "designTitle", "visibility"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = readOnlyShared;
   });
-
-  document.getElementById("saveOnlineButton").disabled = value;
-  document.getElementById("designTitle").disabled = value;
-  document.getElementById("visibility").disabled = value;
-
-  canvas.style.pointerEvents = value ? "none" : "auto";
+  if (canvas) canvas.style.cursor = readOnlyShared ? "default" : "crosshair";
 }
 
-/* ---------------------------------
-   DRAWING
----------------------------------- */
-
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = backgroundColor;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+function drawScene(targetCtx, includeSelection = false) {
+  targetCtx.clearRect(0, 0, canvas.width, canvas.height);
+  targetCtx.fillStyle = backgroundColor;
+  targetCtx.fillRect(0, 0, canvas.width, canvas.height);
 
   objects.forEach((obj, i) => {
-    ctx.fillStyle = obj.color;
-
+    targetCtx.save();
+    targetCtx.fillStyle = obj.color;
     if (obj.type === "text") {
-      ctx.font = "bold " + obj.size + "px Arial";
-      ctx.textBaseline = "top";
-      ctx.fillText(obj.text, obj.x, obj.y);
+      targetCtx.font = `bold ${obj.size}px Arial`;
+      targetCtx.textBaseline = "top";
+      targetCtx.fillText(obj.text, obj.x, obj.y);
+    } else if (obj.type === "rect") {
+      targetCtx.fillRect(obj.x, obj.y, obj.w, obj.h);
+    } else if (obj.type === "circle") {
+      targetCtx.beginPath();
+      targetCtx.arc(obj.x, obj.y, obj.r, 0, Math.PI * 2);
+      targetCtx.fill();
     }
 
-    if (obj.type === "rect") {
-      ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
-    }
-
-    if (obj.type === "circle") {
-      ctx.beginPath();
-      ctx.arc(obj.x, obj.y, obj.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    if (i === selected) {
-      ctx.save();
-      ctx.strokeStyle = "#1769e0";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([7, 5]);
-
+    if (includeSelection && i === selected) {
+      targetCtx.strokeStyle = "#1769e0";
+      targetCtx.lineWidth = 3;
+      targetCtx.setLineDash([7, 5]);
       if (obj.type === "circle") {
-        ctx.beginPath();
-        ctx.arc(obj.x, obj.y, obj.r + 7, 0, Math.PI * 2);
-        ctx.stroke();
+        targetCtx.beginPath();
+        targetCtx.arc(obj.x, obj.y, obj.r + 7, 0, Math.PI * 2);
+        targetCtx.stroke();
       } else {
-        const width = obj.type === "text"
-          ? ctx.measureText(obj.text).width : obj.w;
-
-        const height = obj.type === "text"
-          ? obj.size + 8 : obj.h;
-
-        ctx.strokeRect(obj.x - 5, obj.y - 5, width + 10, height + 10);
+        targetCtx.font = obj.type === "text" ? `bold ${obj.size}px Arial` : targetCtx.font;
+        const width = obj.type === "text" ? targetCtx.measureText(obj.text).width : obj.w;
+        const height = obj.type === "text" ? obj.size + 8 : obj.h;
+        targetCtx.strokeRect(obj.x - 5, obj.y - 5, width + 10, height + 10);
       }
-
-      ctx.restore();
     }
+    targetCtx.restore();
   });
 }
 
-function addText() {
-  if (readOnlyShared) return;
-
-  objects.push({
-    type: "text",
-    text: "Your Text",
-    x: 100,
-    y: 100,
-    size: 48,
-    color: "#1769e0"
-  });
-
-  selectLast();
-}
-
-function addShape(type) {
-  if (readOnlyShared) return;
-
-  if (type === "rect") {
-    objects.push({
-      type: "rect",
-      x: 150,
-      y: 150,
-      w: 180,
-      h: 120,
-      color: "#1769e0"
-    });
-  } else {
-    objects.push({
-      type: "circle",
-      x: 300,
-      y: 250,
-      r: 65,
-      color: "#1769e0"
-    });
+function draw() {
+  if (!ctx || !canvas) {
+    setStatus("Your browser couldn't create the design canvas.", true);
+    return;
   }
-
-  selectLast();
+  drawScene(ctx, true);
 }
 
 function selectLast() {
@@ -512,29 +508,50 @@ function selectLast() {
   draw();
 }
 
+function addText() {
+  if (readOnlyShared) return;
+  if (objects.length >= MAX_OBJECTS) return setStatus(`A design can contain up to ${MAX_OBJECTS} elements.`, true);
+  objects.push({ type: "text", text: "Your Text", x: 100, y: 100, size: 48, color: "#1769e0" });
+  selectLast();
+  setStatus("Text added. Select it and edit the text on the right.");
+}
+
+function addShape(type) {
+  if (readOnlyShared) return;
+  if (objects.length >= MAX_OBJECTS) return setStatus(`A design can contain up to ${MAX_OBJECTS} elements.`, true);
+  if (type === "rect") {
+    objects.push({ type: "rect", x: 150, y: 150, w: 180, h: 120, color: "#1769e0" });
+  } else if (type === "circle") {
+    objects.push({ type: "circle", x: 300, y: 250, r: 65, color: "#1769e0" });
+  } else {
+    return setStatus("That shape type isn't supported.", true);
+  }
+  selectLast();
+  setStatus(`${type === "rect" ? "Rectangle" : "Circle"} added.`);
+}
+
 function syncEditor() {
   const obj = objects[selected];
-
-  document.getElementById("textValue").value =
-    obj && obj.type === "text" ? obj.text : "";
-
-  document.getElementById("objectColor").value =
-    obj ? obj.color : "#1769e0";
+  const textInput = document.getElementById("textValue");
+  const colorInput = document.getElementById("objectColor");
+  if (textInput) textInput.value = obj?.type === "text" ? obj.text : "";
+  if (colorInput) colorInput.value = obj?.color && isHexColor(obj.color) ? obj.color : "#1769e0";
 }
 
 function updateText(value) {
   if (readOnlyShared) return;
-
   const obj = objects[selected];
   if (!obj || obj.type !== "text") return;
-
-  obj.text = value;
+  if (String(value).length > MAX_TEXT_LENGTH) {
+    setStatus(`Text is limited to ${MAX_TEXT_LENGTH} characters.`, true);
+    return;
+  }
+  obj.text = String(value);
   draw();
 }
 
 function updateColor(value) {
-  if (readOnlyShared || selected < 0) return;
-
+  if (readOnlyShared || selected < 0 || !isHexColor(value)) return;
   objects[selected].color = value;
   draw();
 }
@@ -547,271 +564,257 @@ function clearSelection() {
 
 function deleteObject() {
   if (readOnlyShared || selected < 0) return;
-
   objects.splice(selected, 1);
   selected = -1;
   syncEditor();
   draw();
+  setStatus("Element deleted.");
 }
 
 function duplicateObject() {
   if (readOnlyShared || selected < 0) return;
-
-  const copy = JSON.parse(JSON.stringify(objects[selected]));
-
-  copy.x += 25;
-  copy.y += 25;
-
+  if (objects.length >= MAX_OBJECTS) return setStatus(`A design can contain up to ${MAX_OBJECTS} elements.`, true);
+  const copy = { ...objects[selected], x: objects[selected].x + 25, y: objects[selected].y + 25 };
   objects.push(copy);
   selectLast();
+  setStatus("Element duplicated.");
 }
 
 function newDesign() {
   if (!confirm("Start a new design? Save your current work first.")) return;
-
   objects = [];
   selected = -1;
   backgroundColor = "#ffffff";
-
   currentOnlineId = null;
   currentShareToken = null;
   currentTitle = "Untitled Design";
-
   document.getElementById("designTitle").value = currentTitle;
-  document.getElementById("background").value = "#ffffff";
+  document.getElementById("background").value = backgroundColor;
   document.getElementById("visibility").value = "private";
-
+  const params = new URLSearchParams(location.search);
+  if (params.has("share")) {
+    params.delete("share");
+    history.replaceState({}, "", location.pathname + (params.toString() ? `?${params}` : "") + location.hash);
+  }
   setReadOnly(false);
   syncEditor();
   draw();
   setStatus("New design created!");
 }
 
-/* ---------------------------------
-   LOCAL SAVING
----------------------------------- */
-
+/* ---------------- LOCAL STORAGE ---------------- */
 function getLocalDesigns() {
-  return JSON.parse(localStorage.getItem("vava-designs") || "{}");
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Saved designs data has an invalid format.");
+    }
+    return parsed;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      setStatus("A local save could not be read because its stored data is damaged. Other editor features are still available.", true);
+    } else if (error?.name === "SecurityError" || error?.name === "QuotaExceededError") {
+      setStatus("This browser has blocked local storage. Try opening VAVA in a regular browser tab.", true);
+    }
+    return {};
+  }
 }
 
 function saveLocalDesign() {
   if (readOnlyShared) return;
-
+  if (!storageAvailable) return setStatus("Local saving isn't available in this browser session. Your current design is still open, but hasn't been saved.", true);
   const name = prompt("Name your local design:");
-  if (!name) return;
-
-  const designs = getLocalDesigns();
-
-  designs[name] = {
-    objects: JSON.parse(JSON.stringify(objects)),
-    backgroundColor
-  };
-
-  localStorage.setItem("vava-designs", JSON.stringify(designs));
-
-  refreshLocalDesigns();
-  setStatus("Design saved on this device!");
+  if (!name || !name.trim()) return;
+  try {
+    const designs = Object.assign(Object.create(null), getLocalDesigns());
+    Object.defineProperty(designs, name.trim(), {
+      value: { ...getCurrentDesignData(), title: name.trim(), savedAt: new Date().toISOString() },
+      enumerable: true, writable: true, configurable: true
+    });
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(designs));
+    refreshLocalDesigns();
+    setStatus(`“${name.trim()}” saved on this device.`);
+  } catch (error) {
+    showError(error, "Couldn't save this design on your device.");
+  }
 }
 
 function refreshLocalDesigns() {
-  const designs = getLocalDesigns();
   const select = document.getElementById("savedDesigns");
-
-  select.innerHTML = '<option value="">Choose a local design</option>';
-
-  Object.keys(designs).forEach(name => {
-    const option = document.createElement("option");
-    option.value = name;
-    option.textContent = name;
+  if (!select) return;
+  select.replaceChildren(new Option("Choose a local design", ""));
+  const designs = getLocalDesigns();
+  Object.keys(designs).sort((a, b) => a.localeCompare(b)).forEach(name => {
+    const option = new Option(name, name);
     select.appendChild(option);
   });
 }
 
 function loadLocalDesign() {
   const name = document.getElementById("savedDesigns").value;
-  if (!name) return;
-
-  const designs = getLocalDesigns();
-
-  objects = designs[name].objects;
-  backgroundColor = designs[name].backgroundColor;
-
-  currentOnlineId = null;
-  currentShareToken = null;
-  currentTitle = name;
-
-  document.getElementById("designTitle").value = name;
-  document.getElementById("background").value = backgroundColor;
-
-  selected = -1;
-  setReadOnly(false);
-  syncEditor();
-  draw();
-
-  setStatus("Opened local design: " + name);
+  if (!name) return setStatus("Choose a local design first.", true);
+  try {
+    const designs = getLocalDesigns();
+    if (!Object.prototype.hasOwnProperty.call(designs, name)) throw new Error("That local save could not be found.");
+    const validated = validateDesignData(designs[name]);
+    objects = validated.objects;
+    backgroundColor = validated.backgroundColor;
+    currentOnlineId = null;
+    currentShareToken = null;
+    currentTitle = name;
+    document.getElementById("designTitle").value = name;
+    document.getElementById("background").value = backgroundColor;
+    document.getElementById("visibility").value = "private";
+    selected = -1;
+    setReadOnly(false);
+    syncEditor();
+    draw();
+    setStatus(`Opened local design: ${name}`);
+  } catch (error) {
+    showError(error, "Couldn't open that local design.");
+  }
 }
 
 function deleteAllSavedDesigns() {
   if (!confirm("Delete all locally saved designs?")) return;
-
-  localStorage.removeItem("vava-designs");
-  refreshLocalDesigns();
-
-  setStatus("All local designs deleted.");
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    refreshLocalDesigns();
+    setStatus("All local designs deleted.");
+  } catch (error) {
+    showError(error, "Couldn't delete local designs.");
+  }
 }
 
-/* ---------------------------------
-   ACCOUNT
----------------------------------- */
+/* ---------------- PNG EXPORT ---------------- */
+function exportPNG() {
+  try {
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = canvas.width;
+    exportCanvas.height = canvas.height;
+    const exportCtx = exportCanvas.getContext("2d");
+    if (!exportCtx) throw new Error("PNG export isn't supported by this browser.");
+    drawScene(exportCtx, false);
+    const safeName = (document.getElementById("designTitle").value || "VAVA-design")
+      .trim().replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "VAVA-design";
+    if (typeof exportCanvas.toBlob === "function") {
+      exportCanvas.toBlob(blob => {
+        try {
+          if (!blob) return setStatus("PNG export failed: the browser couldn't create the image.", true);
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${safeName}.png`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1500);          setStatus("PNG export started. Check your browser downloads.");
+        } catch (error) {
+          showError(error, "PNG export failed.");
+        }
+      }, "image/png");
+    } else {
+      const link = document.createElement("a");
+      link.href = exportCanvas.toDataURL("image/png");
+      link.download = `${safeName}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setStatus("PNG export started. Check your browser downloads.");
+    }
+  } catch (error) {
+    showError(error, "PNG export failed.");
+  }
+}
 
+/* ---------------- SUPABASE AUTH ---------------- */
 async function signUp() {
   try {
     requireBackend();
-
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
-
-    if (!email || password.length < 6) {
-      throw new Error("Enter an email and a password of at least 6 characters.");
-    }
-
-    const { data, error } = await db.auth.signUp({
-      email,
-      password
-    });
-
+    if (!email || password.length < 6) throw new Error("Enter a valid email and a password of at least 6 characters.");
+    const { data, error } = await db.auth.signUp({ email, password });
     if (error) throw error;
-
     if (data.session) {
       currentUser = data.user;
       updateAccountStatus();
-      setStatus("Your VAVA account was created!");
       await refreshOnlineDesigns();
+      setStatus("Your VAVA account was created!");
     } else {
-      setStatus("Account created! Check your email to confirm your address, then sign in.");
+      setStatus("Account created. Check your email to confirm your address, then sign in.");
     }
-  } catch (error) {
-    setStatus(error.message);
-  }
+  } catch (error) { showError(error, "Account creation failed."); }
 }
 
 async function signIn() {
   try {
     requireBackend();
-
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
-
-    const { data, error } = await db.auth.signInWithPassword({
-      email,
-      password
-    });
-
+    if (!email || !password) throw new Error("Enter your email and password.");
+    const { data, error } = await db.auth.signInWithPassword({ email, password });
     if (error) throw error;
-
     currentUser = data.user;
     updateAccountStatus();
-
     await refreshOnlineDesigns();
     setStatus("Signed in successfully!");
-  } catch (error) {
-    setStatus(error.message);
-  }
+  } catch (error) { showError(error, "Sign in failed."); }
 }
 
 async function signOut() {
   try {
     requireBackend();
-
     const { error } = await db.auth.signOut();
     if (error) throw error;
-
     currentUser = null;
     currentOnlineId = null;
     currentShareToken = null;
-
     updateAccountStatus();
     clearOnlineDesigns();
     setStatus("You have signed out.");
-  } catch (error) {
-    setStatus(error.message);
-  }
+  } catch (error) { showError(error, "Sign out failed."); }
 }
 
 function updateAccountStatus() {
-  document.getElementById("accountStatus").textContent =
-    currentUser ? "Signed in: " + currentUser.email : "Not signed in";
+  document.getElementById("accountStatus").textContent = currentUser
+    ? `Signed in: ${currentUser.email || "VAVA user"}` : "Not signed in";
 }
 
 function clearOnlineDesigns() {
-  document.getElementById("onlineDesigns").innerHTML =
-    '<option value="">Choose an online design</option>';
+  const select = document.getElementById("onlineDesigns");
+  if (select) select.replaceChildren(new Option("Choose an online design", ""));
 }
 
-/* ---------------------------------
-   ONLINE SAVING
----------------------------------- */
-
+/* ---------------- ONLINE DESIGNS ---------------- */
 async function saveOnlineDesign() {
   try {
     requireBackend();
-
-    if (!currentUser) {
-      throw new Error("Sign in before saving designs online.");
-    }
-
-    const title =
-      document.getElementById("designTitle").value.trim() ||
-      "Untitled Design";
-
+    if (readOnlyShared) throw new Error("This shared design is view-only. Create a new design to save your own copy.");
+    if (!currentUser) throw new Error("Sign in before saving designs online.");
+    const title = document.getElementById("designTitle").value.trim().slice(0, 120) || "Untitled Design";
     const visibility = document.getElementById("visibility").value;
-
-    const designData = {
-      objects: JSON.parse(JSON.stringify(objects)),
-      backgroundColor
-    };
-
+    if (!["private", "unlisted", "public"].includes(visibility)) throw new Error("Choose a valid visibility setting.");
+    const designData = getCurrentDesignData();
     let result;
-
     if (currentOnlineId) {
-      result = await db
-        .from("designs")
-        .update({
-          title,
-          visibility,
-          design_data: designData,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", currentOnlineId)
-        .select()
-        .single();
+      result = await db.from("designs").update({ title, visibility, design_data: designData, updated_at: new Date().toISOString() })
+        .eq("id", currentOnlineId).select().single();
     } else {
-      result = await db
-        .from("designs")
-        .insert({
-          owner_id: currentUser.id,
-          title,
-          visibility,
-          design_data: designData
-        })
-        .select()
-        .single();
+      result = await db.from("designs").insert({ owner_id: currentUser.id, title, visibility, design_data: designData })
+        .select().single();
     }
-
     if (result.error) throw result.error;
-
     currentOnlineId = result.data.id;
     currentShareToken = result.data.share_token;
     currentTitle = result.data.title;
-
     await refreshOnlineDesigns();
-
     setStatus("Your design is saved online!");
     return result.data;
-
   } catch (error) {
-    setStatus(error.message);
+    showError(error, "Couldn't save your design online.");
     throw error;
   }
 }
@@ -819,46 +822,25 @@ async function saveOnlineDesign() {
 async function refreshOnlineDesigns() {
   try {
     requireBackend();
-
-    if (!currentUser) {
-      throw new Error("Sign in to view your online designs.");
-    }
-
-    const { data, error } = await db
-      .from("designs")
+    if (!currentUser) throw new Error("Sign in to view your online designs.");
+    const { data, error } = await db.from("designs")
       .select("id, title, visibility, share_token, updated_at")
       .order("updated_at", { ascending: false });
-
     if (error) throw error;
-
     const select = document.getElementById("onlineDesigns");
-    select.innerHTML = '<option value="">Choose an online design</option>';
-
-    data.forEach(design => {
-      const option = document.createElement("option");
-      option.value = design.id;
-      option.textContent = design.title + " (" + design.visibility + ")";
-      select.appendChild(option);
-    });
-
+    select.replaceChildren(new Option("Choose an online design", ""));
+    (data || []).forEach(design => select.appendChild(new Option(`${design.title} (${design.visibility})`, design.id)));
     setStatus("Your online designs have been refreshed.");
-  } catch (error) {
-    setStatus(error.message);
-  }
+  } catch (error) { showError(error, "Couldn't refresh online designs."); }
 }
 
 function applyDesignData(data, title) {
-  if (!data || !Array.isArray(data.objects)) {
-    throw new Error("This design has invalid or unsupported data.");
-  }
-
-  objects = data.objects;
-  backgroundColor = data.backgroundColor || "#ffffff";
-  currentTitle = title || "Untitled Design";
-
+  const validated = validateDesignData(data);
+  objects = validated.objects;
+  backgroundColor = validated.backgroundColor;
+  currentTitle = String(title || "Untitled Design").slice(0, 120);
   document.getElementById("designTitle").value = currentTitle;
   document.getElementById("background").value = backgroundColor;
-
   selected = -1;
   syncEditor();
   draw();
@@ -867,352 +849,592 @@ function applyDesignData(data, title) {
 async function openOnlineDesign() {
   try {
     requireBackend();
-
-    if (!currentUser) {
-      throw new Error("Sign in to open your online designs.");
-    }
-
+    if (!currentUser) throw new Error("Sign in to open your online designs.");
     const id = document.getElementById("onlineDesigns").value;
     if (!id) throw new Error("Choose a design first.");
-
-    const { data, error } = await db
-      .from("designs")
-      .select("*")
-      .eq("id", id)
-      .single();
-
+    const { data, error } = await db.from("designs").select("*").eq("id", id).single();
     if (error) throw error;
-
+    applyDesignData(data.design_data, data.title);
     currentOnlineId = data.id;
     currentShareToken = data.share_token;
-
     document.getElementById("visibility").value = data.visibility;
-
-    applyDesignData(data.design_data, data.title);
     setReadOnly(false);
-
-    setStatus("Opened online design: " + data.title);
-  } catch (error) {
-    setStatus(error.message);
-  }
+    setStatus(`Opened online design: ${data.title}`);
+  } catch (error) { showError(error, "Couldn't open that online design."); }
 }
 
 async function deleteOnlineDesign() {
   try {
     requireBackend();
-
-    if (!currentUser) {
-      throw new Error("Sign in first.");
-    }
-
+    if (!currentUser) throw new Error("Sign in first.");
     const id = document.getElementById("onlineDesigns").value;
-
     if (!id) throw new Error("Choose an online design first.");
-
     if (!confirm("Permanently delete this online design?")) return;
-
-    const { error } = await db
-      .from("designs")
-      .delete()
-      .eq("id", id);
-
+    const { error } = await db.from("designs").delete().eq("id", id);
     if (error) throw error;
-
-    if (currentOnlineId === id) {
-      currentOnlineId = null;
-      currentShareToken = null;
-    }
-
+    if (currentOnlineId === id) { currentOnlineId = null; currentShareToken = null; }
     await refreshOnlineDesigns();
     setStatus("Online design deleted.");
-  } catch (error) {
-    setStatus(error.message);
-  }
+  } catch (error) { showError(error, "Couldn't delete that online design."); }
 }
 
-/* ---------------------------------
-   SHARING
----------------------------------- */
-
+/* ---------------- SHARING ---------------- */
 async function shareDesign() {
   try {
     requireBackend();
-
-    if (!currentUser) {
-      throw new Error("Sign in before sharing your design.");
-    }
-
+    if (!currentUser) throw new Error("Sign in before sharing your design.");
     const saved = await saveOnlineDesign();
-
-    if (saved.visibility === "private") {
-      throw new Error("Change visibility to Unlisted or Public before sharing.");
-    }
-
+    if (saved.visibility === "private") throw new Error("Change visibility to Unlisted or Public before sharing.");
+    if (!saved.share_token) throw new Error("This design has no share token. Check the Supabase table setup.");
     const link = new URL(location.href);
     link.search = "";
     link.hash = "";
     link.searchParams.set("share", saved.share_token);
-
-    await navigator.clipboard.writeText(link.href);
-
-    setStatus("Sharing link copied! " + link.href);
-  } catch (error) {
-    if (error.name === "NotAllowedError") {
-      setStatus("Clipboard unavailable. Try opening the site over HTTPS.");
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(link.href);
+      setStatus(`Sharing link copied: ${link.href}`);
     } else {
-      setStatus(error.message);
+      window.prompt("Copy this sharing link:", link.href);
+      setStatus("Your sharing link is ready. Copy it from the dialog.");
     }
-  }
+  } catch (error) { showError(error, "Couldn't create a sharing link."); }
 }
 
 async function openSharedDesign(token) {
   try {
-    requireBackend();
-
-    const { data, error } = await db.rpc("get_shared_design", {
-      p_token: token
-    });
-
+    if (!db) throw new Error("This is a shared VAVA link, but online sharing isn't configured yet. Add the Supabase credentials and database setup, then reload.");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
+      throw new Error("This sharing link is invalid or incomplete.");
+    }
+    const { data, error } = await db.rpc("get_shared_design", { p_token: token });
     if (error) throw error;
     if (!data) throw new Error("Design not found or sharing is disabled.");
-
+    applyDesignData(data.design_data, data.title);
     currentOnlineId = null;
     currentShareToken = token;
-
-    applyDesignData(data.design_data, data.title);
-
     document.getElementById("visibility").value = data.visibility;
-
     setReadOnly(true);
     setStatus("Viewing a shared VAVA design. Editing is disabled.");
   } catch (error) {
-    setStatus(error.message);
+    setReadOnly(false);
+    showError(error, "Couldn't open this shared design.");
   }
 }
 
-/* ---------------------------------
-   PUBLIC GALLERY
----------------------------------- */
-
+/* ---------------- PUBLIC GALLERY ---------------- */
 async function loadPublicGallery() {
   try {
     requireBackend();
-
-    const { data, error } = await db
-      .from("designs")
+    const { data, error } = await db.from("designs")
       .select("id, title, design_data, share_token, created_at")
-      .eq("visibility", "public")
-      .order("created_at", { ascending: false });
-
+      .eq("visibility", "public").order("created_at", { ascending: false }).limit(100);
     if (error) throw error;
-
     const gallery = document.getElementById("gallery");
-    gallery.innerHTML = "";
-
-    if (!data.length) {
+    gallery.replaceChildren();
+    if (!data?.length) {
       gallery.textContent = "No public designs yet. Be the first to publish one!";
       return;
     }
-
     data.forEach(design => {
       const item = document.createElement("div");
       item.className = "gallery-item";
-
       const title = document.createElement("strong");
-      title.textContent = design.title;
-
+      title.textContent = design.title || "Untitled Design";
       const button = document.createElement("button");
       button.className = "light";
       button.textContent = "View Design";
-
-      button.onclick = () => {
+      button.addEventListener("click", () => {
         try {
-          currentOnlineId = null;
-          currentShareToken = design.share_token;
-
           applyDesignData(design.design_data, design.title);
+          currentOnlineId = null;
+          currentShareToken = design.share_token || null;
           document.getElementById("visibility").value = "public";
-
           setReadOnly(true);
           setStatus("Viewing a public design. Editing is disabled.");
           window.scrollTo({ top: 0, behavior: "smooth" });
-        } catch (error) {
-          setStatus(error.message);
-        }
-      };
-
-      item.appendChild(title);
-      item.appendChild(document.createElement("br"));
-      item.appendChild(button);
+        } catch (error) { showError(error, "This public design contains invalid data."); }
+      });
+      item.append(title, document.createElement("br"), button);
       gallery.appendChild(item);
     });
-
     setStatus("Public gallery loaded!");
-  } catch (error) {
-    setStatus(error.message);
-  }
+  } catch (error) { showError(error, "Couldn't load the public gallery."); }
 }
 
-/* ---------------------------------
-   CANVAS MOVEMENT
----------------------------------- */
+/* ---------------- FEEDBACK ---------------- */
+function sendFeedback() {
+  setStatus("Feedback isn't connected yet. No report has been sent. To receive feedback, configure a real support email or connect a feedback service before launch.", true);
+}
 
+/* ---------------- CANVAS SELECTION + DRAG ---------------- */
 function pointerPosition(event) {
   const rect = canvas.getBoundingClientRect();
-
-  return {
-    x: (event.clientX - rect.left) * canvas.width / rect.width,
-    y: (event.clientY - rect.top) * canvas.height / rect.height
-  };
+  if (!rect.width || !rect.height) return { x: 0, y: 0 };
+  return { x: (event.clientX - rect.left) * canvas.width / rect.width,
+    y: (event.clientY - rect.top) * canvas.height / rect.height };
 }
 
 function hitTest(obj, x, y) {
-  if (obj.type === "circle") {
-    return Math.hypot(x - obj.x, y - obj.y) <= obj.r + 8;
+  if (obj.type === "circle") return Math.hypot(x - obj.x, y - obj.y) <= obj.r + 8;
+  if (obj.type === "text") {
+    ctx.save();
+    ctx.font = `bold ${obj.size}px Arial`;
+    const width = ctx.measureText(obj.text).width;
+    ctx.restore();
+    return x >= obj.x - 8 && x <= obj.x + width + 8 && y >= obj.y - 8 && y <= obj.y + obj.size + 8;
   }
-
-  ctx.font = "bold " + (obj.size || 16) + "px Arial";
-
-  const width = obj.type === "text"
-    ? ctx.measureText(obj.text).width : obj.w;
-
-  const height = obj.type === "text"
-    ? obj.size + 8 : obj.h;
-
-  return x >= obj.x - 8 && x <= obj.x + width + 8 &&
-    y >= obj.y - 8 && y <= obj.y + height + 8;
+  return x >= obj.x - 8 && x <= obj.x + obj.w + 8 && y >= obj.y - 8 && y <= obj.y + obj.h + 8;
 }
 
 canvas.addEventListener("pointerdown", event => {
-  if (readOnlyShared) return;
-
-  const p = pointerPosition(event);
+  if (readOnlyShared || event.button !== 0) return;
+  const point = pointerPosition(event);
   selected = -1;
-
+  dragging = false;
   for (let i = objects.length - 1; i >= 0; i--) {
-    if (hitTest(objects[i], p.x, p.y)) {
+    if (hitTest(objects[i], point.x, point.y)) {
       selected = i;
       dragging = true;
-      offsetX = p.x - objects[i].x;
-      offsetY = p.y - objects[i].y;
-
-      canvas.setPointerCapture(event.pointerId);
+      activePointerId = event.pointerId;
+      offsetX = point.x - objects[i].x;
+      offsetY = point.y - objects[i].y;
+      try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* pointer capture may be unavailable */ }
       break;
     }
   }
-
   syncEditor();
   draw();
 });
 
 canvas.addEventListener("pointermove", event => {
-  if (!dragging || selected < 0 || readOnlyShared) return;
-
-  const p = pointerPosition(event);
-
-  objects[selected].x = p.x - offsetX;
-  objects[selected].y = p.y - offsetY;
-
+  if (!dragging || selected < 0 || readOnlyShared || (activePointerId !== null && event.pointerId !== activePointerId)) return;
+  const point = pointerPosition(event);
+  objects[selected].x = point.x - offsetX;
+  objects[selected].y = point.y - offsetY;
   draw();
 });
 
-canvas.addEventListener("pointerup", () => {
+function finishDrag(event) {
+  if (activePointerId !== null && event?.pointerId !== undefined && event.pointerId !== activePointerId) return;
   dragging = false;
-});
-
-canvas.addEventListener("pointercancel", () => {
-  dragging = false;
-});
-
-/* ---------------------------------
-   VAVA FEEDBACK
----------------------------------- */
-
-async function submitFeedback() {
-  const typeField = document.getElementById("feedbackType");
-  const messageField = document.getElementById("feedbackMessage");
-  const button = document.getElementById("sendFeedbackButton");
-  const status = document.getElementById("feedbackStatus");
-  const message = messageField.value.trim();
-
-  if (!message) {
-    status.textContent = "Please write a message before sending.";
-    messageField.focus();
-    return;
-  }
-
-  if (message.length < 10) {
-    status.textContent = "Please add a little more detail (at least 10 characters).";
-    messageField.focus();
-    return;
-  }
-
-  if (!db) {
-    status.textContent = "Feedback is not connected yet. Add your Supabase project URL and publishable key, then create the vava_feedback table.";
-    return;
-  }
-
-  button.disabled = true;
-  status.textContent = "Sending feedback...";
-
-  try {
-    const { error } = await db.from("vava_feedback").insert({
-      category: typeField.value,
-      message: message
-    });
-
-    if (error) throw error;
-
-    messageField.value = "";
-    status.textContent = "Thanks! Your feedback was sent to the VAVA feedback inbox.";
-  } catch (error) {
-    console.error("VAVA feedback error:", error);
-    status.textContent = "Could not send feedback. Check the Supabase feedback table and try again.";
-  } finally {
-    button.disabled = false;
-  }
+  activePointerId = null;
 }
+canvas.addEventListener("pointerup", finishDrag);
+canvas.addEventListener("pointercancel", finishDrag);
+canvas.addEventListener("lostpointercapture", finishDrag);
 
-/* ---------------------------------
-   STARTUP
----------------------------------- */
-
+/* ---------------- STARTUP ---------------- */
 async function initializeVAVA() {
-  refreshLocalDesigns();
-  draw();
+  try {
+    try {
+      const testKey = `${LOCAL_STORAGE_KEY}-test`;
+      localStorage.setItem(testKey, "1");
+      localStorage.removeItem(testKey);
+      storageAvailable = true;
+    } catch (_) {
+      storageAvailable = false;
+    }
+    refreshLocalDesigns();
+    syncEditor();
+    draw();
+    updateAccountStatus();
 
-  if (!db) {
-    setStatus("Add your Supabase project URL and Publishable key to connect online features.");
-    return;
-  }
+    const params = new URLSearchParams(location.search);
+    const shareToken = params.get("share");
+    if (shareToken) {
+      await openSharedDesign(shareToken);
+      return;
+    }
 
-  const { data, error } = await db.auth.getSession();
+    if (!db) {
+      setStatus(storageAvailable
+        ? "VAVA is ready. Local editing and device saves are available. Configure Supabase to enable accounts, online saves, sharing, and the public gallery."
+        : "VAVA is ready for editing. This browser blocks local storage, and online features need Supabase setup.");
+      return;
+    }
 
-  if (!error) {
+    const { data, error } = await db.auth.getSession();
+    if (error) throw error;
     currentUser = data.session?.user || null;
     updateAccountStatus();
-  }
-
-  db.auth.onAuthStateChange((_event, session) => {
-    currentUser = session?.user || null;
-    updateAccountStatus();
-
-    if (!currentUser) {
-      clearOnlineDesigns();
-    }
-  });
-
-  const params = new URLSearchParams(location.search);
-  const shareToken = params.get("share");
-
-  if (shareToken) {
-    await openSharedDesign(shareToken);
-  } else if (currentUser) {
-    await refreshOnlineDesigns();
+    db.auth.onAuthStateChange((_event, session) => {
+      currentUser = session?.user || null;
+      updateAccountStatus();
+      if (!currentUser) clearOnlineDesigns();
+    });
+    if (currentUser) await refreshOnlineDesigns();
+    else setStatus("VAVA is ready. Sign in to save designs online.");
+  } catch (error) {
+    showError(error, "VAVA started, but some setup checks failed. You can still try the editor.");
   }
 }
 
 initializeVAVA();
+
+</script>
+
+</body>
+</html>          setStatus("PNG export started. Check your browser downloads.");
+        } catch (error) {
+          showError(error, "PNG export failed.");
+        }
+      }, "image/png");
+    } else {
+      const link = document.createElement("a");
+      link.href = exportCanvas.toDataURL("image/png");
+      link.download = `${safeName}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setStatus("PNG export started. Check your browser downloads.");
+    }
+  } catch (error) {
+    showError(error, "PNG export failed.");
+  }
+}
+
+/* ---------------- SUPABASE AUTH ---------------- */
+async function signUp() {
+  try {
+    requireBackend();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    if (!email || password.length < 6) throw new Error("Enter a valid email and a password of at least 6 characters.");
+    const { data, error } = await db.auth.signUp({ email, password });
+    if (error) throw error;
+    if (data.session) {
+      currentUser = data.user;
+      updateAccountStatus();
+      await refreshOnlineDesigns();
+      setStatus("Your VAVA account was created!");
+    } else {
+      setStatus("Account created. Check your email to confirm your address, then sign in.");
+    }
+  } catch (error) { showError(error, "Account creation failed."); }
+}
+
+async function signIn() {
+  try {
+    requireBackend();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    if (!email || !password) throw new Error("Enter your email and password.");
+    const { data, error } = await db.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    currentUser = data.user;
+    updateAccountStatus();
+    await refreshOnlineDesigns();
+    setStatus("Signed in successfully!");
+  } catch (error) { showError(error, "Sign in failed."); }
+}
+
+async function signOut() {
+  try {
+    requireBackend();
+    const { error } = await db.auth.signOut();
+    if (error) throw error;
+    currentUser = null;
+    currentOnlineId = null;
+    currentShareToken = null;
+    updateAccountStatus();
+    clearOnlineDesigns();
+    setStatus("You have signed out.");
+  } catch (error) { showError(error, "Sign out failed."); }
+}
+
+function updateAccountStatus() {
+  document.getElementById("accountStatus").textContent = currentUser
+    ? `Signed in: ${currentUser.email || "VAVA user"}` : "Not signed in";
+}
+
+function clearOnlineDesigns() {
+  const select = document.getElementById("onlineDesigns");
+  if (select) select.replaceChildren(new Option("Choose an online design", ""));
+}
+
+/* ---------------- ONLINE DESIGNS ---------------- */
+async function saveOnlineDesign() {
+  try {
+    requireBackend();
+    if (readOnlyShared) throw new Error("This shared design is view-only. Create a new design to save your own copy.");
+    if (!currentUser) throw new Error("Sign in before saving designs online.");
+    const title = document.getElementById("designTitle").value.trim().slice(0, 120) || "Untitled Design";
+    const visibility = document.getElementById("visibility").value;
+    if (!["private", "unlisted", "public"].includes(visibility)) throw new Error("Choose a valid visibility setting.");
+    const designData = getCurrentDesignData();
+    let result;
+    if (currentOnlineId) {
+      result = await db.from("designs").update({ title, visibility, design_data: designData, updated_at: new Date().toISOString() })
+        .eq("id", currentOnlineId).select().single();
+    } else {
+      result = await db.from("designs").insert({ owner_id: currentUser.id, title, visibility, design_data: designData })
+        .select().single();
+    }
+    if (result.error) throw result.error;
+    currentOnlineId = result.data.id;
+    currentShareToken = result.data.share_token;
+    currentTitle = result.data.title;
+    await refreshOnlineDesigns();
+    setStatus("Your design is saved online!");
+    return result.data;
+  } catch (error) {
+    showError(error, "Couldn't save your design online.");
+    throw error;
+  }
+}
+
+async function refreshOnlineDesigns() {
+  try {
+    requireBackend();
+    if (!currentUser) throw new Error("Sign in to view your online designs.");
+    const { data, error } = await db.from("designs")
+      .select("id, title, visibility, share_token, updated_at")
+      .order("updated_at", { ascending: false });
+    if (error) throw error;
+    const select = document.getElementById("onlineDesigns");
+    select.replaceChildren(new Option("Choose an online design", ""));
+    (data || []).forEach(design => select.appendChild(new Option(`${design.title} (${design.visibility})`, design.id)));
+    setStatus("Your online designs have been refreshed.");
+  } catch (error) { showError(error, "Couldn't refresh online designs."); }
+}
+
+function applyDesignData(data, title) {
+  const validated = validateDesignData(data);
+  objects = validated.objects;
+  backgroundColor = validated.backgroundColor;
+  currentTitle = String(title || "Untitled Design").slice(0, 120);
+  document.getElementById("designTitle").value = currentTitle;
+  document.getElementById("background").value = backgroundColor;
+  selected = -1;
+  syncEditor();
+  draw();
+}
+
+async function openOnlineDesign() {
+  try {
+    requireBackend();
+    if (!currentUser) throw new Error("Sign in to open your online designs.");
+    const id = document.getElementById("onlineDesigns").value;
+    if (!id) throw new Error("Choose a design first.");
+    const { data, error } = await db.from("designs").select("*").eq("id", id).single();
+    if (error) throw error;
+    applyDesignData(data.design_data, data.title);
+    currentOnlineId = data.id;
+    currentShareToken = data.share_token;
+    document.getElementById("visibility").value = data.visibility;
+    setReadOnly(false);
+    setStatus(`Opened online design: ${data.title}`);
+  } catch (error) { showError(error, "Couldn't open that online design."); }
+}
+
+async function deleteOnlineDesign() {
+  try {
+    requireBackend();
+    if (!currentUser) throw new Error("Sign in first.");
+    const id = document.getElementById("onlineDesigns").value;
+    if (!id) throw new Error("Choose an online design first.");
+    if (!confirm("Permanently delete this online design?")) return;
+    const { error } = await db.from("designs").delete().eq("id", id);
+    if (error) throw error;
+    if (currentOnlineId === id) { currentOnlineId = null; currentShareToken = null; }
+    await refreshOnlineDesigns();
+    setStatus("Online design deleted.");
+  } catch (error) { showError(error, "Couldn't delete that online design."); }
+}
+
+/* ---------------- SHARING ---------------- */
+async function shareDesign() {
+  try {
+    requireBackend();
+    if (!currentUser) throw new Error("Sign in before sharing your design.");
+    const saved = await saveOnlineDesign();
+    if (saved.visibility === "private") throw new Error("Change visibility to Unlisted or Public before sharing.");
+    if (!saved.share_token) throw new Error("This design has no share token. Check the Supabase table setup.");
+    const link = new URL(location.href);
+    link.search = "";
+    link.hash = "";
+    link.searchParams.set("share", saved.share_token);
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(link.href);
+      setStatus(`Sharing link copied: ${link.href}`);
+    } else {
+      window.prompt("Copy this sharing link:", link.href);
+      setStatus("Your sharing link is ready. Copy it from the dialog.");
+    }
+  } catch (error) { showError(error, "Couldn't create a sharing link."); }
+}
+
+async function openSharedDesign(token) {
+  try {
+    if (!db) throw new Error("This is a shared VAVA link, but online sharing isn't configured yet. Add the Supabase credentials and database setup, then reload.");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
+      throw new Error("This sharing link is invalid or incomplete.");
+    }
+    const { data, error } = await db.rpc("get_shared_design", { p_token: token });
+    if (error) throw error;
+    if (!data) throw new Error("Design not found or sharing is disabled.");
+    applyDesignData(data.design_data, data.title);
+    currentOnlineId = null;
+    currentShareToken = token;
+    document.getElementById("visibility").value = data.visibility;
+    setReadOnly(true);
+    setStatus("Viewing a shared VAVA design. Editing is disabled.");
+  } catch (error) {
+    setReadOnly(false);
+    showError(error, "Couldn't open this shared design.");
+  }
+}
+
+/* ---------------- PUBLIC GALLERY ---------------- */
+async function loadPublicGallery() {
+  try {
+    requireBackend();
+    const { data, error } = await db.from("designs")
+      .select("id, title, design_data, share_token, created_at")
+      .eq("visibility", "public").order("created_at", { ascending: false }).limit(100);
+    if (error) throw error;
+    const gallery = document.getElementById("gallery");
+    gallery.replaceChildren();
+    if (!data?.length) {
+      gallery.textContent = "No public designs yet. Be the first to publish one!";
+      return;
+    }
+    data.forEach(design => {
+      const item = document.createElement("div");
+      item.className = "gallery-item";
+      const title = document.createElement("strong");
+      title.textContent = design.title || "Untitled Design";
+      const button = document.createElement("button");
+      button.className = "light";
+      button.textContent = "View Design";
+      button.addEventListener("click", () => {
+        try {
+          applyDesignData(design.design_data, design.title);
+          currentOnlineId = null;
+          currentShareToken = design.share_token || null;
+          document.getElementById("visibility").value = "public";
+          setReadOnly(true);
+          setStatus("Viewing a public design. Editing is disabled.");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch (error) { showError(error, "This public design contains invalid data."); }
+      });
+      item.append(title, document.createElement("br"), button);
+      gallery.appendChild(item);
+    });
+    setStatus("Public gallery loaded!");
+  } catch (error) { showError(error, "Couldn't load the public gallery."); }
+}
+
+/* ---------------- FEEDBACK ---------------- */
+function sendFeedback() {
+  setStatus("Feedback isn't connected yet. No report has been sent. To receive feedback, configure a real support email or connect a feedback service before launch.", true);
+}
+
+/* ---------------- CANVAS SELECTION + DRAG ---------------- */
+function pointerPosition(event) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return { x: 0, y: 0 };
+  return { x: (event.clientX - rect.left) * canvas.width / rect.width,
+    y: (event.clientY - rect.top) * canvas.height / rect.height };
+}
+
+function hitTest(obj, x, y) {
+  if (obj.type === "circle") return Math.hypot(x - obj.x, y - obj.y) <= obj.r + 8;
+  if (obj.type === "text") {
+    ctx.save();
+    ctx.font = `bold ${obj.size}px Arial`;
+    const width = ctx.measureText(obj.text).width;
+    ctx.restore();
+    return x >= obj.x - 8 && x <= obj.x + width + 8 && y >= obj.y - 8 && y <= obj.y + obj.size + 8;
+  }
+  return x >= obj.x - 8 && x <= obj.x + obj.w + 8 && y >= obj.y - 8 && y <= obj.y + obj.h + 8;
+}
+
+canvas.addEventListener("pointerdown", event => {
+  if (readOnlyShared || event.button !== 0) return;
+  const point = pointerPosition(event);
+  selected = -1;
+  dragging = false;
+  for (let i = objects.length - 1; i >= 0; i--) {
+    if (hitTest(objects[i], point.x, point.y)) {
+      selected = i;
+      dragging = true;
+      activePointerId = event.pointerId;
+      offsetX = point.x - objects[i].x;
+      offsetY = point.y - objects[i].y;
+      try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* pointer capture may be unavailable */ }
+      break;
+    }
+  }
+  syncEditor();
+  draw();
+});
+
+canvas.addEventListener("pointermove", event => {
+  if (!dragging || selected < 0 || readOnlyShared || (activePointerId !== null && event.pointerId !== activePointerId)) return;
+  const point = pointerPosition(event);
+  objects[selected].x = point.x - offsetX;
+  objects[selected].y = point.y - offsetY;
+  draw();
+});
+
+function finishDrag(event) {
+  if (activePointerId !== null && event?.pointerId !== undefined && event.pointerId !== activePointerId) return;
+  dragging = false;
+  activePointerId = null;
+}
+canvas.addEventListener("pointerup", finishDrag);
+canvas.addEventListener("pointercancel", finishDrag);
+canvas.addEventListener("lostpointercapture", finishDrag);
+
+/* ---------------- STARTUP ---------------- */
+async function initializeVAVA() {
+  try {
+    try {
+      const testKey = `${LOCAL_STORAGE_KEY}-test`;
+      localStorage.setItem(testKey, "1");
+      localStorage.removeItem(testKey);
+      storageAvailable = true;
+    } catch (_) {
+      storageAvailable = false;
+    }
+    refreshLocalDesigns();
+    syncEditor();
+    draw();
+    updateAccountStatus();
+
+    const params = new URLSearchParams(location.search);
+    const shareToken = params.get("share");
+    if (shareToken) {
+      await openSharedDesign(shareToken);
+      return;
+    }
+
+    if (!db) {
+      setStatus(storageAvailable
+        ? "VAVA is ready. Local editing and device saves are available. Configure Supabase to enable accounts, online saves, sharing, and the public gallery."
+        : "VAVA is ready for editing. This browser blocks local storage, and online features need Supabase setup.");
+      return;
+    }
+
+    const { data, error } = await db.auth.getSession();
+    if (error) throw error;
+    currentUser = data.session?.user || null;
+    updateAccountStatus();
+    db.auth.onAuthStateChange((_event, session) => {
+      currentUser = session?.user || null;
+      updateAccountStatus();
+      if (!currentUser) clearOnlineDesigns();
+    });
+    if (currentUser) await refreshOnlineDesigns();
+    else setStatus("VAVA is ready. Sign in to save designs online.");
+  } catch (error) {
+    showError(error, "VAVA started, but some setup checks failed. You can still try the editor.");
+  }
+}
+
+initializeVAVA();
+
 </script>
 
 </body>
