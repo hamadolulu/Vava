@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1769e0">
   <title>VAVA — Creativity Without Limits</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; font-family: Arial, sans-serif; }
@@ -33,12 +32,10 @@
     .contact-header p, .privacy-note { color: #64748b; font-size: 13px; line-height: 1.5; }
     #close-contact { border: 0; background: #edf3ff; color: #1769e0; border-radius: 8px; padding: 8px 11px; cursor: pointer; }
     label { display: block; font-size: 13px; font-weight: 700; margin: 13px 0 6px; }
-    input, select, textarea { width: 100%; padding: 11px; border: 1px solid #dce3ee; border-radius: 8px; font: inherit; }
+    select, textarea, input { width: 100%; padding: 11px; border: 1px solid #dce3ee; border-radius: 8px; font: inherit; }
     textarea { min-height: 130px; resize: vertical; }
     .submit { width: 100%; margin-top: 14px; padding: 12px; background: #1769e0; color: white; border: 0; border-radius: 9px; font-weight: 700; cursor: pointer; }
-    .submit:disabled { opacity: .6; cursor: wait; }
     #feedback-status { min-height: 20px; margin: 10px 0 0; font-size: 13px; overflow-wrap: anywhere; }
-    .honeypot { position: absolute !important; left: -10000px !important; width: 1px !important; height: 1px !important; overflow: hidden !important; }
     @media (max-width: 500px) { #contact-launcher { right: 12px; bottom: 12px; } .contact-card { padding: 17px; } }
   </style>
 </head>
@@ -52,7 +49,7 @@
       <div class="contact-header">
         <div>
           <h1 id="contact-title">Contact VAVA</h1>
-          <p>Send a comment or report without creating an account. The VAVA team reviews submissions in the Supabase dashboard.</p>
+          <p>Send a comment or report to the VAVA team through GitHub. You do not need a VAVA account. GitHub will ask you to sign in or create a GitHub account to submit the issue.</p>
         </div>
         <button id="close-contact" type="button" aria-label="Close contact form">Close</button>
       </div>
@@ -60,44 +57,32 @@
       <form id="feedback-form">
         <label for="feedback-category">What is this about?</label>
         <select id="feedback-category" name="category" required>
-          <option value="bug">A problem / bug</option>
-          <option value="idea">An idea or feature request</option>
-          <option value="comment">A general comment</option>
-          <option value="other">Other</option>
+          <option value="Bug report">A problem / bug</option>
+          <option value="Feature request">An idea or feature request</option>
+          <option value="Usability or accessibility">Usability or accessibility</option>
+          <option value="General comment">A general comment</option>
+          <option value="Other">Other</option>
         </select>
 
         <label for="feedback-message">Your comment</label>
         <textarea id="feedback-message" name="message" minlength="5" maxlength="4000" required placeholder="Tell us what happened or what you think..."></textarea>
 
-        <label for="feedback-email">Email for a reply (optional)</label>
-        <input id="feedback-email" name="contact_email" type="email" maxlength="254" autocomplete="email" placeholder="you@example.com">
+        <label for="feedback-device">Browser or device (optional)</label>
+        <input id="feedback-device" name="device" maxlength="200" placeholder="For example: Chrome on Android">
 
-        <div class="honeypot" aria-hidden="true">
-          <label for="website">Leave this field empty</label>
-          <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
-        </div>
-
-        <p class="privacy-note">Feedback is stored for the VAVA team to review. If you enter an email, the team can use it to reply. Don’t include passwords, Supabase keys, or sensitive personal information.</p>
-        <button class="submit" id="feedback-submit" type="submit">Send feedback</button>
+        <p class="privacy-note">GitHub issues are public. Do not include passwords, Supabase keys, email addresses, or other private information. When you continue, GitHub opens a draft issue; review it and press Submit new issue there.</p>
+        <button class="submit" type="submit">Continue to GitHub to submit</button>
         <p id="feedback-status" role="status" aria-live="polite"></p>
       </form>
     </section>
   </div>
 
   <script>
-    // Supabase public publishable key is intended for browser use; access is restricted by RLS.
-    const FEEDBACK_SUPABASE_URL = "https://jzfbmicrvikzmtrfebyo.supabase.co";
-    const FEEDBACK_SUPABASE_KEY = "sb_publishable_1Mdi3TwrQ3tstU19I1zYRw_Q71xLtpD";
-    const feedbackDb = window.supabase?.createClient
-      ? window.supabase.createClient(FEEDBACK_SUPABASE_URL, FEEDBACK_SUPABASE_KEY)
-      : null;
-
     const dialog = document.getElementById("contact-dialog");
     const launcher = document.getElementById("contact-launcher");
     const closeButton = document.getElementById("close-contact");
     const form = document.getElementById("feedback-form");
     const status = document.getElementById("feedback-status");
-    const submitButton = document.getElementById("feedback-submit");
 
     function closeContact() {
       dialog.setAttribute("aria-hidden", "true");
@@ -116,44 +101,30 @@
       if (event.key === "Escape" && dialog.getAttribute("aria-hidden") === "false") closeContact();
     });
 
-    form.addEventListener("submit", async event => {
+    form.addEventListener("submit", event => {
       event.preventDefault();
-      status.textContent = "";
-      status.style.color = "#64748b";
+      if (!form.reportValidity()) return;
 
-      // Basic honeypot spam check. This is not a substitute for server-side CAPTCHA/rate limiting.
-      if (document.getElementById("website").value) {
-        status.textContent = "Thanks for your feedback.";
-        form.reset();
-        return;
-      }
-      if (!feedbackDb) {
-        status.textContent = "Feedback is temporarily unavailable. Please try again later.";
-        status.style.color = "#b42318";
-        return;
-      }
+      const category = document.getElementById("feedback-category").value;
+      const message = document.getElementById("feedback-message").value.trim();
+      const device = document.getElementById("feedback-device").value.trim();
+      const titlePrefix = category === "Bug report" ? "[Feedback]: Bug report" : `[Feedback]: ${category}`;
+      const title = titlePrefix.slice(0, 200);
+      const body = [
+        `Feedback type: ${category}`,
+        "",
+        "What would you like to tell us?",
+        message,
+        device ? `\nBrowser or device: ${device}` : "",
+        "",
+        "Submitted through the VAVA in-app contact form."
+      ].filter(Boolean).join("\n");
 
-      submitButton.disabled = true;
-      submitButton.textContent = "Sending…";
-      try {
-        const payload = {
-          category: document.getElementById("feedback-category").value,
-          message: document.getElementById("feedback-message").value.trim(),
-          contact_email: document.getElementById("feedback-email").value.trim() || null
-        };
-        const { error } = await feedbackDb.from("feedback").insert(payload);
-        if (error) throw error;
-        form.reset();
-        status.textContent = "Thanks — your feedback was sent to VAVA for review.";
-        status.style.color = "#18794e";
-      } catch (error) {
-        console.error("VAVA feedback submission failed:", error);
-        status.textContent = "We couldn't send your feedback. Please try again later.";
-        status.style.color = "#b42318";
-      } finally {
-        submitButton.disabled = false;
-        submitButton.textContent = "Send feedback";
-      }
+      const url = new URL("https://github.com/hamadolulu/Vava/issues/new");
+      url.searchParams.set("title", title);
+      url.searchParams.set("body", body);
+      status.textContent = "Opening a prefilled GitHub issue. Review it and press Submit new issue on GitHub to send your feedback.";
+      window.open(url.toString(), "_blank", "noopener,noreferrer");
     });
   </script>
 </body>
